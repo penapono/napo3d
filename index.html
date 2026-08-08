@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Catálogo comparativo de modelos 3D para brindes corporativos ." />
+  <title>Catálogo de Modelos 3D | </title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="./" aria-label="Catálogo de Modelos 3D — início"><span class="brand-mark"></span><span class="brand-divider"></span><span class="brand-label">Modelos 3D</span></a>
+      <div class="header-meta"><span class="status-dot"></span><span>Catálogo técnico</span><span class="header-date">Atualizado em 07/08/2026</span></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="page-title">
+      <div class="hero-inner">
+        <div class="eyebrow">Pesquisa de equivalentes · MakerWorld + Cults3D</div>
+        <h1 id="page-title">Alternativas para produção de <em>brindes corporativos</em></h1>
+        <p class="hero-lead">Uma seleção objetiva de modelos 3D para avaliar viabilidade, acabamento e custo antes da produção.</p>
+      <div class="hero-bottom">
+        <div class="hero-note"><span class="note-line"></span><span>Valores de peso estimados devem ser validados no Bambu Studio antes da produção.</span></div>
+      </div>
+      </div>
+    </section>
+
+    <section class="overview" aria-label="Resumo do catálogo">
+      <div class="overview-stat"><span class="stat-value" id="stat-products">—</span><span class="stat-label">Produtos avaliados</span></div>
+      <div class="overview-stat"><span class="stat-value" id="stat-options">—</span><span class="stat-label">Alternativas encontradas</span></div>
+      <div class="overview-stat"><span class="stat-value" id="stat-recommended">—</span><span class="stat-label">Recomendações</span></div>
+      <div class="overview-stat"><span class="stat-value" id="stat-confirmed">—</span><span class="stat-label">Pesos confirmados</span></div>
+      <p class="overview-copy">Use os filtros para reduzir a seleção e comparar opções com o mesmo critério.</p>
+    </section>
+
+    <section class="catalog-shell" aria-labelledby="catalog-title">
+      <div class="section-heading"><div><span class="eyebrow">Explorar catálogo</span><h2 id="catalog-title">Modelos selecionados</h2></div><p id="result-count" class="result-count">Carregando catálogo…</p></div>
+      <div class="filters" aria-label="Filtros do catálogo">
+        <label class="search-field"><span class="sr-only">Buscar modelos</span><span class="search-icon" aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Buscar por produto ou modelo" /></label>
+        <label class="filter-field"><span>Categoria</span><select id="category"><option value="all">Todas as categorias</option></select></label>
+        <label class="filter-field"><span>Origem</span><select id="source"><option value="all">Todas as origens</option><option>MakerWorld</option><option>Cults3D</option></select></label>
+        <label class="filter-field"><span>Material</span><select id="material"><option value="all">Todos os materiais</option></select></label>
+        <label class="filter-field"><span>Ordenar por</span><select id="sort"><option value="recommended">Recomendado</option><option value="weight">Menor peso</option><option value="time">Menor tempo</option><option value="rating">Melhor avaliação</option></select></label>
+        <button id="clear-filters" class="clear-button" type="button">Limpar filtros</button>
+      </div>
+      <div class="toggle-row"><label class="toggle"><input id="only-recommended" type="checkbox" /><span class="toggle-track"></span>Somente recomendados</label><label class="toggle"><input id="only-confirmed" type="checkbox" /><span class="toggle-track"></span>Somente peso confirmado</label><label class="toggle"><input id="only-ams" type="checkbox" /><span class="toggle-track"></span>AMS necessário</label></div>
+      <div id="catalog" class="catalog-list" aria-live="polite"></div>
+      <div id="empty-state" class="empty-state" hidden><strong>Nenhum modelo encontrado</strong><span>Tente remover algum filtro ou usar outro termo de busca.</span></div>
+    </section>
+
+    <section class="table-section" aria-labelledby="table-title"><div class="section-heading"><div><span class="eyebrow">Visão geral</span><h2 id="table-title">Resumo comparativo</h2></div><p class="section-caption">Pesos exibidos em múltiplos de 5 g.</p></div><div class="table-wrap"><table><thead><tr><th>Produto</th><th>Alternativas</th><th>Menor peso</th><th>Origem</th><th>Decisão</th></tr></thead><tbody id="summary-table"></tbody></table></div></section>
+  </main>
+  <footer class="site-footer"><div class="footer-inner"><span class="brand-mark"></span><span>Catálogo técnico comparativo para avaliação interna.</span><span>Fontes: MakerWorld e Cults3D · modelos gratuitos</span></div></footer>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
