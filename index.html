@@ -1,58 +1,110 @@
 <!doctype html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Catálogo comparativo de modelos 3D para brindes corporativos ." />
-  <title>Catálogo de Modelos 3D | </title>
-  <link rel="stylesheet" href="css/styles.css" />
+  <meta name="description"
+    content="Escolha seu próximo objeto impresso em 3D com preço claro e acabamento cuidadoso." />
+  <title>Escolha seu próximo favorito | Catálogo 3D</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="./css/styles.css" />
 </head>
+
 <body>
   <header class="site-header">
-    <div class="header-inner">
-      <a class="brand" href="./" aria-label="Catálogo de Modelos 3D — início"><span class="brand-mark"></span><span class="brand-divider"></span><span class="brand-label">Modelos 3D</span></a>
-      <div class="header-meta"><span class="status-dot"></span><span>Catálogo técnico</span><span class="header-date">Atualizado em 07/08/2026</span></div>
+    <div class="container nav-wrap"><a class="brand" href="#top" aria-label="Voltar ao início"><span
+          class="brand-mark">3D</span><span>Não há nada que a gente não resolva</span></a>
+      <nav aria-label="Navegação principal"><a href="#catalogo">Catálogo</a><a href="#como-funciona">Como funciona</a><a
+          class="nav-cta" href="#catalogo">Escolher agora <span aria-hidden="true">↗</span></a></nav>
     </div>
   </header>
-
-  <main>
-    <section class="hero" aria-labelledby="page-title">
-      <div class="hero-inner">
-        <div class="eyebrow">Pesquisa de equivalentes · MakerWorld + Cults3D</div>
-        <h1 id="page-title">Alternativas para produção de <em>brindes corporativos</em></h1>
-        <p class="hero-lead">Uma seleção objetiva de modelos 3D para avaliar viabilidade, acabamento e custo antes da produção.</p>
-      <div class="hero-bottom">
-        <div class="hero-note"><span class="note-line"></span><span>Valores de peso estimados devem ser validados no Bambu Studio antes da produção.</span></div>
-      </div>
+  <main id="top">
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Peças que dão vontade de ter</p>
+          <h1>Encontre algo <em>feito</em> para o seu espaço.</h1>
+          <p class="hero-text">Objetos impressos em 3D para organizar, decorar e deixar a rotina mais gostosa. Escolha
+            seu favorito e peça uma cotação.</p><a class="button button-primary" href="#catalogo">Ver peças disponíveis
+            <span aria-hidden="true">↓</span></a>
+        </div>
+        <div class="hero-art" aria-label="Timelapse de uma peça sendo impressa em 3D"><img class="hero-gif" src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNmF2ODA1NW14aHFwOWxncmUzdzJmdnM5ZXAydjF2cW56dWltcjBkNSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/BINkTZl70NCv0QpdgU/giphy.gif" alt="Objeto sendo impresso em 3D em timelapse" onerror="this.hidden=true" />
+          <div class="art-card art-card-main"><span class="art-kicker">feito sob demanda</span><strong>Pequenos
+              objetos,<br />grandes detalhes.</strong><span class="art-line"></span></div>
+          <div class="art-card art-card-side"><span>seu próximo<br /><b>favorito</b></span></div>
+          <div class="art-dot dot-one"></div>
+          <div class="art-dot dot-two"></div>
+        </div>
       </div>
     </section>
-
-    <section class="overview" aria-label="Resumo do catálogo">
-      <div class="overview-stat"><span class="stat-value" id="stat-products">—</span><span class="stat-label">Produtos avaliados</span></div>
-      <div class="overview-stat"><span class="stat-value" id="stat-options">—</span><span class="stat-label">Alternativas encontradas</span></div>
-      <div class="overview-stat"><span class="stat-value" id="stat-recommended">—</span><span class="stat-label">Recomendações</span></div>
-      <div class="overview-stat"><span class="stat-value" id="stat-confirmed">—</span><span class="stat-label">Pesos confirmados</span></div>
-      <p class="overview-copy">Use os filtros para reduzir a seleção e comparar opções com o mesmo critério.</p>
-    </section>
-
-    <section class="catalog-shell" aria-labelledby="catalog-title">
-      <div class="section-heading"><div><span class="eyebrow">Explorar catálogo</span><h2 id="catalog-title">Modelos selecionados</h2></div><p id="result-count" class="result-count">Carregando catálogo…</p></div>
-      <div class="filters" aria-label="Filtros do catálogo">
-        <label class="search-field"><span class="sr-only">Buscar modelos</span><span class="search-icon" aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Buscar por produto ou modelo" /></label>
-        <label class="filter-field"><span>Categoria</span><select id="category"><option value="all">Todas as categorias</option></select></label>
-        <label class="filter-field"><span>Origem</span><select id="source"><option value="all">Todas as origens</option><option>MakerWorld</option><option>Cults3D</option></select></label>
-        <label class="filter-field"><span>Material</span><select id="material"><option value="all">Todos os materiais</option></select></label>
-        <label class="filter-field"><span>Ordenar por</span><select id="sort"><option value="recommended">Recomendado</option><option value="weight">Menor peso</option><option value="time">Menor tempo</option><option value="rating">Melhor avaliação</option></select></label>
-        <button id="clear-filters" class="clear-button" type="button">Limpar filtros</button>
+    <section class="catalog-section" id="catalogo">
+      <div class="container">
+        <div class="section-intro">
+          <div>
+            <p class="eyebrow">Escolha por categoria</p>
+            <h2>Peças para todos os cantos.</h2>
+          </div>
+          <p class="intro-note">Preços apresentados por peça. Cada pedido é produzido com cuidado.</p>
+        </div>
+        <div class="toolbar" aria-label="Filtros do catálogo"><label class="search-box"><span
+              aria-hidden="true">⌕</span><input id="search" type="search" placeholder="O que você está procurando?"
+              aria-label="Buscar produtos" /></label>
+          <div class="filter-pills" id="category-filters"><button class="pill active"
+              data-category="all">Tudo</button><button class="pill"
+              data-category="Organização">Organização</button><button class="pill"
+              data-category="Casa">Casa</button><button class="pill" data-category="Presentes">Presentes</button><button
+              class="pill" data-category="Diversão">Diversão</button></div><label
+            class="sort-box"><span>Ordenar</span><select id="sort" aria-label="Ordenar produtos">
+              <option value="recommended">Mais queridos</option>
+              <option value="price">Menor valor</option>
+              <option value="name">Nome A–Z</option>
+            </select></label>
+        </div>
+        <div class="catalog-grid" id="catalog-grid" aria-live="polite"></div>
+        <nav class="pagination" id="pagination" aria-label="Paginação do catálogo"></nav>
+        <p class="empty-state" id="empty-state" hidden>Não encontramos uma peça com esse nome. Tente outra busca.</p>
       </div>
-      <div class="toggle-row"><label class="toggle"><input id="only-recommended" type="checkbox" /><span class="toggle-track"></span>Somente recomendados</label><label class="toggle"><input id="only-confirmed" type="checkbox" /><span class="toggle-track"></span>Somente peso confirmado</label><label class="toggle"><input id="only-ams" type="checkbox" /><span class="toggle-track"></span>AMS necessário</label></div>
-      <div id="catalog" class="catalog-list" aria-live="polite"></div>
-      <div id="empty-state" class="empty-state" hidden><strong>Nenhum modelo encontrado</strong><span>Tente remover algum filtro ou usar outro termo de busca.</span></div>
     </section>
-
-    <section class="table-section" aria-labelledby="table-title"><div class="section-heading"><div><span class="eyebrow">Visão geral</span><h2 id="table-title">Resumo comparativo</h2></div><p class="section-caption">Pesos exibidos em múltiplos de 5 g.</p></div><div class="table-wrap"><table><thead><tr><th>Produto</th><th>Alternativas</th><th>Menor peso</th><th>Origem</th><th>Decisão</th></tr></thead><tbody id="summary-table"></tbody></table></div></section>
+    <section class="how-section" id="como-funciona">
+      <div class="container how-grid">
+        <div>
+          <p class="eyebrow">Sem complicação</p>
+          <h2>Você escolhe.<br /><em>A gente prepara.</em></h2>
+        </div>
+        <div class="steps">
+          <article><span>01</span>
+            <div>
+              <h3>Encontre seu favorito</h3>
+              <p>Explore as peças e escolha aquela que combina com você.</p>
+            </div>
+          </article>
+          <article><span>02</span>
+            <div>
+              <h3>Peça uma cotação</h3>
+              <p>Envie o nome do produto para confirmar cores e disponibilidade.</p>
+            </div>
+          </article>
+          <article><span>03</span>
+            <div>
+              <h3>Receba algo especial</h3>
+              <p>Sua peça é produzida sob demanda e preparada para chegar perfeita.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
   </main>
-  <footer class="site-footer"><div class="footer-inner"><span class="brand-mark"></span><span>Catálogo técnico comparativo para avaliação interna.</span><span>Fontes: MakerWorld e Cults3D · modelos gratuitos</span></div></footer>
-  <script type="module" src="js/app.js"></script>
+  <footer class="site-footer">
+    <div class="container footer-wrap">
+      <p>Objetos úteis, bonitos e feitos com intenção.</p><a href="#catalogo">Voltar ao catálogo ↑</a>
+    </div>
+  </footer>
+  <script src="./js/app.js" defer></script>
 </body>
+
 </html>

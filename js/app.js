@@ -1,99 +1,17 @@
-const state = { items: [], filters: { query: '', category: 'all', source: 'all', material: 'all', sort: 'recommended', recommended: false, confirmed: false, ams: false } };
+const state = { items: [], query: '', category: 'all', sort: 'recommended', page: 1, perPage: 6 };
 const $ = (selector) => document.querySelector(selector);
-const catalog = $('#catalog');
-
-const formatCurrency = (value) => value == null || Number.isNaN(value) ? 'Não informado' : value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const safeText = (value, fallback = 'Não informado') => value === null || value === undefined || value === '' ? fallback : String(value);
-const escapeHtml = (value) => safeText(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const optionWeight = (option) => option.weight == null ? null : Number(option.weight);
-const roundUpToFive = (value) => value == null || Number.isNaN(Number(value)) ? null : Math.ceil(Number(value) / 5) * 5;
-const optionCost = (option) => roundUpToFive(optionWeight(option));
-const optionScore = (option) => Number(option.score) || 0;
-const isConfirmed = (option) => String(option.weight_kind || '').toLowerCase().includes('confirm');
-const allOptions = () => state.items.flatMap((item) => item.options.map((option) => ({ ...option, product: item })));
-
-function uniqueValues(key) {
-  return [...new Set(allOptions().map((option) => option[key]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
-}
-
-function populateFilters() {
-  const categories = [...new Set(state.items.map((item) => item.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  $('#category').insertAdjacentHTML('beforeend', categories.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join(''));
-  $('#material').insertAdjacentHTML('beforeend', uniqueValues('material').map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join(''));
-}
-
-function updateStats() {
-  const options = allOptions();
-  $('#stat-products').textContent = state.items.length;
-  $('#stat-options').textContent = options.length;
-  $('#stat-recommended').textContent = options.filter((option) => option.score === Math.max(...option.product.options.map(optionScore))).length;
-  $('#stat-confirmed').textContent = options.filter(isConfirmed).length;
-}
-
-function getVisibleItems() {
-  const { query, category, source, material, sort, recommended, confirmed, ams } = state.filters;
-  const normalizedQuery = query.trim().toLowerCase();
-  return state.items.map((item) => {
-    let options = item.options.filter((option) => {
-      const haystack = `${item.name} ${item.category} ${item.summary} ${option.name} ${option.source} ${option.material}`.toLowerCase();
-      const productMatches = !normalizedQuery || haystack.includes(normalizedQuery);
-      const matchesSource = source === 'all' || option.source === source;
-      const matchesMaterial = material === 'all' || option.material === material;
-      const matchesRecommended = !recommended || option.score === Math.max(...item.options.map(optionScore));
-      const matchesConfirmed = !confirmed || isConfirmed(option);
-      const matchesAms = !ams || String(option.ams).toLowerCase() === 'sim';
-      return productMatches && matchesSource && matchesMaterial && matchesRecommended && matchesConfirmed && matchesAms;
-    });
-    const productMatches = !normalizedQuery || `${item.name} ${item.category} ${item.summary}`.toLowerCase().includes(normalizedQuery);
-    if (productMatches && category !== 'all' && item.category !== category) options = [];
-    return { ...item, options };
-  }).filter((item) => item.options.length);
-}
-
-function sortedOptions(options) {
-  const sort = state.filters.sort;
-  return [...options].sort((a, b) => {
-    if (sort === 'weight') return (optionWeight(a) ?? Infinity) - (optionWeight(b) ?? Infinity);
-    if (sort === 'time') return (Number(a.time) || Infinity) - (Number(b.time) || Infinity);
-    if (sort === 'rating') return optionScore(b) - optionScore(a);
-    return optionScore(b) - optionScore(a) || (optionWeight(a) ?? Infinity) - (optionWeight(b) ?? Infinity);
-  });
-}
-
-function imageMarkup(url, alt, className = '') {
-  if (!url || url.startsWith('data:image')) return `<div class="reference-fallback ${className}">Imagem de referência<br><small>Não informada</small></div>`;
-  return `<img class="${className}" src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="reference-fallback" hidden>Imagem indisponível</span>`;
-}
-
-function optionMarkup(option, index, item) {
-  const best = option.score === Math.max(...item.options.map(optionScore));
-  const weight = optionWeight(option);
-  return `<article class="option${best ? ' recommended' : ''}">${best ? '<span class="recommend-label">RECOMENDADA</span>' : ''}<div class="option-image">${imageMarkup(option.imageUrl, option.name, 'option-thumb')}<span class="reference-fallback" hidden>Imagem indisponível</span></div><div class="option-body"><span class="option-source">${escapeHtml(option.source)} · opção ${index + 1}</span><h4>${escapeHtml(option.name)}</h4><div class="metric-grid"><div class="metric"><span class="metric-label">Medidas</span><span class="metric-value">${escapeHtml(option.dims)}</span></div><div class="metric"><span class="metric-label">Tempo</span><span class="metric-value">${escapeHtml(option.time)}${option.time && option.time !== 'N/I' ? ' min' : ''}</span></div><div class="metric"><span class="metric-label">Peso</span><span class="metric-value">${weight == null ? 'Não informado' : `${weight} g`}</span></div><div class="metric"><span class="metric-label">Material</span><span class="metric-value">${escapeHtml(option.material)}</span></div><div class="metric"><span class="metric-label">Cores / AMS</span><span class="metric-value">${escapeHtml(option.colors)} · ${escapeHtml(option.ams)}</span></div></div><p class="option-note">${isConfirmed(option) ? 'Peso confirmado' : 'Peso estimado para orçamento'} · ${escapeHtml(option.license)}</p><a class="model-link" href="${escapeHtml(option.url)}" target="_blank" rel="noopener noreferrer">Abrir modelo ↗</a></div></article>`;
-}
-
-function renderProduct(item) {
-  const options = sortedOptions(item.options);
-  return `<article class="product"><div class="product-reference">${imageMarkup(item.reference, `Referência: ${item.name}`, 'reference-image')}</div><div class="product-info"><span class="eyebrow">Referência do catálogo · Página ${escapeHtml(item.page)}</span><h3>${escapeHtml(item.name)}</h3><p class="product-summary">${escapeHtml(item.summary)}</p><div class="product-meta"><span class="pill">${escapeHtml(item.category)}</span><span class="pill">${options.length} ${options.length === 1 ? 'alternativa' : 'alternativas'}</span><span class="pill">R$ 0,40/g</span></div></div><div class="options">${options.map((option, index) => optionMarkup(option, index, item)).join('')}</div></article>`;
-}
-
-function renderTable(items) {
-  $('#summary-table').innerHTML = items.map((item) => { const weights = item.options.map(optionWeight).filter((weight) => weight != null); const sources = [...new Set(item.options.map((option) => option.source))].join(' / '); const decision = item.options.find((option) => option.score === Math.max(...item.options.map(optionScore))); return `<tr><td>${escapeHtml(item.name)}</td><td>${item.options.length}</td><td>${weights.length ? `${roundUpToFive(Math.min(...weights))} g` : 'Não informado'}</td><td>${escapeHtml(sources)}</td><td class="decision">${decision ? 'Avaliar recomendada' : 'Sem indicação'}</td></tr>`; }).join('');
-}
-
-function render() {
-  const visible = getVisibleItems();
-  catalog.innerHTML = visible.map(renderProduct).join('');
-  $('#empty-state').hidden = visible.length > 0;
-  $('#result-count').textContent = `${visible.length} ${visible.length === 1 ? 'produto encontrado' : 'produtos encontrados'}`;
-  renderTable(visible);
-}
-
-function bindEvents() {
-  const map = { search: 'query', category: 'category', source: 'source', material: 'material', sort: 'sort' };
-  Object.entries(map).forEach(([id, key]) => { $(`#${id}`).addEventListener('input', (event) => { state.filters[key] = event.target.value; render(); }); });
-  [['only-recommended', 'recommended'], ['only-confirmed', 'confirmed'], ['only-ams', 'ams']].forEach(([id, key]) => { $(`#${id}`).addEventListener('change', (event) => { state.filters[key] = event.target.checked; render(); }); });
-  $('#clear-filters').addEventListener('click', () => { Object.assign(state.filters, { query: '', category: 'all', source: 'all', material: 'all', sort: 'recommended', recommended: false, confirmed: false, ams: false }); $('#search').value = ''; ['category', 'source', 'material', 'sort'].forEach((id) => { $(`#${id}`).value = state.filters[id]; }); ['only-recommended', 'only-confirmed', 'only-ams'].forEach((id) => { $(`#${id}`).checked = false; }); render(); });
-}
-
-async function init() { try { const response = await fetch('./data/models.json'); if (!response.ok) throw new Error(`HTTP ${response.status}`); state.items = await response.json(); populateFilters(); updateStats(); bindEvents(); render(); } catch (error) { catalog.innerHTML = '<div class="empty-state"><strong>Não foi possível carregar o catálogo.</strong><span>Verifique se o site está sendo servido por um servidor HTTP.</span></div>'; console.error('[v0] Erro ao carregar models.json:', error); } }
+const grid = $('#catalog-grid');
+const money = (value) => value == null ? 'Consulte' : value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 });
+const text = (value) => value == null || value === '' ? '' : String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const weight = (option) => Number.isFinite(Number(option.weight)) ? Number(option.weight) : null;
+const price = (option) => { const grams = weight(option); return grams == null ? null : Math.ceil((grams * 0.4) / 5) * 5; };
+const copy = { Organização: 'Mais ordem e leveza para a sua rotina.', Casa: 'Um detalhe especial para deixar seu espaço mais bonito.', Presentes: 'Um presente criativo, útil e cheio de personalidade.', Diversão: 'Uma peça divertida para brincar, relaxar e colecionar.', Escritório: 'Mais praticidade e personalidade para a sua mesa.', Acessórios: 'Um detalhe funcional para acompanhar o seu dia.', Aviação: 'Uma peça marcante para quem ama design e aviação.', Embalagem: 'Uma apresentação especial para tornar cada entrega inesquecível.', Fidget: 'Uma pausa gostosa para as mãos e para a mente.', Utilitário: 'Uma solução inteligente para facilitar sua rotina.', 'Identidade visual': 'Uma peça exclusiva para destacar a sua marca.', 'Brinde inteligente / NFC': 'Um brinde memorável que aproxima sua marca das pessoas.' };
+function image(url, alt) { if (!url || url.startsWith('data:image')) return '<div class="image-fallback">Imagem<br>indisponível</div>'; return `<img src="${text(url)}" alt="${text(alt)}" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><div class="image-fallback" hidden>Imagem indisponível</div>`; }
+function optionScore(option) { return Number(option.score) || 0; }
+function optionsFor(item) { return [...(item.options || [])].sort((a, b) => optionScore(b) - optionScore(a)); }
+function visible() { const query = state.query.trim().toLowerCase(); return state.items.flatMap((item) => optionsFor(item).map((option, index) => ({ item, option, index }))).filter(({ item, option }) => (state.category === 'all' || item.category === state.category) && (!query || `${item.name} ${item.category} ${item.summary || ''} ${option.name} ${option.colors || ''}`.toLowerCase().includes(query))).sort((a, b) => { if (state.sort === 'name') return a.item.name.localeCompare(b.item.name, 'pt-BR') || a.option.name.localeCompare(b.option.name, 'pt-BR'); if (state.sort === 'price') return (price(a.option) ?? Infinity) - (price(b.option) ?? Infinity); return optionScore(b.option) - optionScore(a.option); }); }
+function card(entry) { const { item, option, index } = entry; const value = price(option); const description = copy[item.category] || 'Uma peça especial, feita para fazer parte da sua rotina.'; return `<article class="product-card"><div class="product-image">${image(option.imageUrl || item.reference, `${item.name} — ${option.name}`)}<span class="product-tag">${text(item.category)}</span></div><div class="product-info"><span class="product-variant">Opção ${index + 1}</span><h3>${text(item.name)}</h3><p class="variant-name">${text(option.name)}</p><span class="product-category">${description}</span><div class="product-bottom"><div class="product-price">${money(value)}<small>por peça</small></div><button class="quote-button" type="button" data-product="${text(item.name)} — ${text(option.name)}">Quero esse</button></div></div></article>`; }
+function render() { const entries = visible(); const totalPages = Math.max(1, Math.ceil(entries.length / state.perPage)); state.page = Math.min(state.page, totalPages); const start = (state.page - 1) * state.perPage; grid.innerHTML = entries.slice(start, start + state.perPage).map(card).join(''); $('#empty-state').hidden = entries.length > 0; renderPagination(entries.length, totalPages); document.querySelectorAll('.quote-button').forEach((button) => button.addEventListener('click', () => { const product = button.dataset.product; window.location.href = `mailto:?subject=${encodeURIComponent(`Cotação: ${product}`)}&body=${encodeURIComponent(`Olá! Tenho interesse em ${product}. Gostaria de confirmar cores, disponibilidade e entrega.`)}`; })); }
+function renderPagination(total, totalPages) { const pagination = $('#pagination'); if (total <= state.perPage) { pagination.innerHTML = ''; return; } pagination.innerHTML = `<button class="page-button" type="button" data-page="prev" ${state.page === 1 ? 'disabled' : ''} aria-label="Página anterior">←</button>${Array.from({ length: totalPages }, (_, index) => `<button class="page-button${state.page === index + 1 ? ' active' : ''}" type="button" data-page="${index + 1}" aria-current="${state.page === index + 1 ? 'page' : 'false'}">${index + 1}</button>`).join('')}<button class="page-button" type="button" data-page="next" ${state.page === totalPages ? 'disabled' : ''} aria-label="Próxima página">→</button>`; pagination.querySelectorAll('.page-button').forEach((button) => button.addEventListener('click', () => { const target = button.dataset.page; state.page = target === 'prev' ? state.page - 1 : target === 'next' ? state.page + 1 : Number(target); render(); $('#catalogo').scrollIntoView({ behavior: 'smooth', block: 'start' }); })); }
+async function init() { try { const response = await fetch('./data/models.json'); if (!response.ok) throw new Error(`HTTP ${response.status}`); state.items = await response.json(); const categories = [...new Set(state.items.map((item) => item.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')); $('#category-filters').innerHTML = '<button class="pill active" data-category="all">Tudo</button>' + categories.map((category) => `<button class="pill" data-category="${text(category)}">${text(category)}</button>`).join(''); document.querySelectorAll('.pill').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.pill').forEach((pill) => pill.classList.remove('active')); button.classList.add('active'); state.category = button.dataset.category; state.page = 1; render(); })); $('#search').addEventListener('input', (event) => { state.query = event.target.value; state.page = 1; render(); }); $('#sort').addEventListener('change', (event) => { state.sort = event.target.value; state.page = 1; render(); }); render(); } catch (error) { grid.innerHTML = '<p class="empty-state">Não foi possível carregar as peças.</p>'; console.error('[v0] Erro ao carregar catálogo:', error); } }
 init();
