@@ -15,7 +15,7 @@ Este documento descreve o backend que deve ser implementado posteriormente para 
   - 1–50 unidades: `peso_em_gramas * 375 / 1000`.
   - 51–100 unidades: `peso_em_gramas * 325 / 1000`.
   - 101+ unidades: `peso_em_gramas * 275 / 1000`.
-  - Arredondar para cima em múltiplos de R$ 5, como no front-end atual.
+  - Arredondar para o inteiro mais próximo, sem centavos.
 - Destinatário temporário dos pedidos: `pedro.gnaponoceno@gmail.com`.
 
 ## Recomendação de stack
