@@ -240,3 +240,15 @@ Substituir gradualmente:
 ## Nota para o agente implementador
 
 Preserve o HTML/CSS atual e transforme as funções de persistência em uma camada `apiClient`. Mantenha os nomes dos campos e os IDs acima para reduzir mudanças visuais. O front-end atual é uma referência de UX, não uma fonte confiável de preço ou autorização. A implementação final deve introduzir loading, erro, estado vazio e confirmação de pedido sem bloquear a navegação do catálogo.
+
+## Fluxo de checkout atualizado
+
+- `Adicionar ao carrinho` nunca deve abrir login, cadastro ou endereço. Abre apenas o modal de quantidade.
+- O modal aceita quantidade livre e atalhos incrementais `+50` e `+100`; o preço unitário deve ser recalculado conforme 375/325/275.
+- O carrinho exibe a estimativa total de produção: soma de `(productionTimeMinutes * quantity) / 10` para cada linha.
+- `POST /api/orders/quote` deve recalcular preços e estimativa no servidor.
+- `Concluir compra` é o primeiro ponto que exige autenticação. Se anônimo, responder `401 AUTH_REQUIRED`.
+- Depois do login, exigir endereço completo; sem endereço, responder `422 ADDRESS_REQUIRED`.
+- Só então permitir `POST /api/orders` com `addressId` ou snapshot de endereço, linhas, totais recalculados e `productionEstimateHours`.
+- `productionTimeMinutes` fica no nível do produto em `data/models.json`; o valor inicial de fallback é 60 e deve ser substituível por produto.
+- Nunca confiar no preço, quantidade, tempo ou total enviados pelo navegador; validar tudo novamente no backend.
