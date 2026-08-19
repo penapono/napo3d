@@ -19,8 +19,7 @@
   <header class="site-header">
     <div class="container nav-wrap"><a class="brand" href="#top" aria-label="Voltar ao início"><span
           class="brand-mark">3D</span><span>Não há nada que a gente não resolva</span></a>
-      <nav aria-label="Navegação principal"><a href="#catalogo">Catálogo</a><a href="#como-funciona">Como funciona</a><a
-          class="nav-cta" href="#catalogo">Escolher agora <span aria-hidden="true">↗</span></a></nav>
+<nav aria-label="Navegação principal"><a href="#catalogo">Catálogo</a><a href="#como-funciona">Como funciona</a><button class="nav-account" id="account-open" type="button">Minha conta <span id="account-label">Entrar</span></button><button class="nav-cart" id="cart-open" type="button" aria-label="Abrir carrinho">Carrinho <span id="cart-count-top">0</span></button></nav>
     </div>
   </header>
   <main id="top">
@@ -66,7 +65,7 @@
             </select></label>
         </div>
         <div class="catalog-grid" id="catalog-grid" aria-live="polite"></div>
-        <nav class="pagination" id="pagination" aria-label="Paginação do catálogo"></nav><aside class="cart-panel" id="cart-panel" aria-label="Carrinho de compras"><div class="cart-header"><div><span class="eyebrow">Seu pedido</span><h2>Meu carrinho <span id="cart-count">0</span></h2></div><button class="cart-close" id="cart-close" type="button" aria-label="Fechar carrinho">×</button></div><div id="cart-items"><p class="cart-empty">Seu carrinho está vazio.</p></div><div class="cart-total"><span>Total estimado</span><strong id="cart-total">R$ 0,00</strong></div><form id="order-form"><label>Nome<input name="name" required autocomplete="name"></label><label>E-mail<input name="email" type="email" required autocomplete="email"></label><label>Telefone<input name="phone" autocomplete="tel"></label><label>Observações<textarea name="notes" rows="3"></textarea></label><button class="quote-button" type="submit">Enviar pedido</button><p class="form-status" id="form-status" role="status"></p></form></aside>
+        <nav class="pagination" id="pagination" aria-label="Paginação do catálogo"></nav><aside class="cart-panel" id="cart-panel" aria-label="Carrinho de compras"><div class="cart-header"><div><span class="eyebrow">Seu pedido</span><h2>Meu carrinho <span id="cart-count">0</span></h2></div><button class="cart-close" id="cart-close" type="button" aria-label="Fechar carrinho">×</button></div><div id="cart-items"><p class="cart-empty">Seu carrinho está vazio.</p></div><div class="cart-total"><span>Total estimado</span><strong id="cart-total">R$ 0,00</strong></div><form id="order-form"><label>Nome<input name="name" required autocomplete="name"></label><label>E-mail<input name="email" type="email" required autocomplete="email"></label><label>Telefone<input name="phone" autocomplete="tel"></label><fieldset><legend>Endereço de entrega</legend><div class="form-row"><label>CEP<input name="postalCode" inputmode="numeric" autocomplete="postal-code" required></label><label>Número<input name="number" autocomplete="address-line2" required></label></div><label>Rua<input name="street" autocomplete="street-address" required></label><div class="form-row"><label>Cidade<input name="city" autocomplete="address-level2" required></label><label>UF<input name="state" maxlength="2" autocomplete="address-level1" required></label></div></fieldset><label>Observações<textarea name="notes" rows="3"></textarea></label><button class="quote-button" type="submit">Enviar pedido</button><p class="form-status" id="form-status" role="status"></p></form></aside>
         <p class="empty-state" id="empty-state" hidden>Não encontramos uma peça com esse nome. Tente outra busca.</p>
       </div>
     </section>
@@ -98,8 +97,7 @@
         </div>
       </div>
     </section>
-  </main>
-  <footer class="site-footer">
+  </main><dialog class="account-dialog" id="account-dialog"><button class="dialog-close" id="account-close" type="button" aria-label="Fechar">×</button><span class="eyebrow">Área do cliente</span><h2>Minha conta</h2><p>Salve seus dados para agilizar próximos pedidos.</p><form id="account-form"><label>Nome completo<input name="accountName" autocomplete="name" required></label><label>E-mail<input name="accountEmail" type="email" autocomplete="email" required></label><label>Telefone<input name="accountPhone" autocomplete="tel"></label><button class="button button-primary" type="submit">Salvar meus dados</button><p class="form-status" id="account-status" role="status"></p></form></dialog><footer class="site-footer">
     <div class="container footer-wrap">
       <p>Objetos úteis, bonitos e feitos com intenção.</p><a href="#catalogo">Voltar ao catálogo ↑</a>
     </div>
