@@ -5,7 +5,7 @@ const money = (value) => value == null ? 'Consulte' : value.toLocaleString('pt-B
 const text = (value) => value == null || value === '' ? '' : String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const weight = (option) => Number.isFinite(Number(option.weight)) ? Number(option.weight) : null;
 const priceTiers = [{ label: 'Até 50 un.', rate: 375 }, { label: '51 a 100 un.', rate: 325 }, { label: 'Mais de 100 un.', rate: 275 }];
-const priceForTier = (option, rate) => { const grams = weight(option); return grams == null ? null : Math.ceil((grams * rate / 100) / 5) * 5; };
+const priceForTier = (option, rate) => { const grams = weight(option); return grams == null ? null : Math.ceil((grams * rate / 1000) / 5) * 5; };
 const unitPrice = (option, quantity) => priceForTier(option, quantity <= 50 ? 375 : quantity <= 100 ? 325 : 275);
 const productionTime = (item) => Number(item.productionTime) || 60;
 const productionEstimate = (entry) => (productionTime(entry.item) * entry.quantity) / 10;

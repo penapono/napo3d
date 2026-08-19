@@ -12,9 +12,9 @@ Este documento descreve o backend que deve ser implementado posteriormente para 
 - Produtos: possuem `id`, `name`, `category`, `reference`, `summary` e `options`.
 - Variações: possuem `name`, `url` (MakerWorld), `imageUrl`, `colors`, `weight` e `score`.
 - Preços: calculados pelo peso e quantidade:
-  - 1–50 unidades: `peso_em_gramas * 375 / 100`.
-  - 51–100 unidades: `peso_em_gramas * 325 / 100`.
-  - 101+ unidades: `peso_em_gramas * 275 / 100`.
+  - 1–50 unidades: `peso_em_gramas * 375 / 1000`.
+  - 51–100 unidades: `peso_em_gramas * 325 / 1000`.
+  - 101+ unidades: `peso_em_gramas * 275 / 1000`.
   - Arredondar para cima em múltiplos de R$ 5, como no front-end atual.
 - Destinatário temporário dos pedidos: `pedro.gnaponoceno@gmail.com`.
 
