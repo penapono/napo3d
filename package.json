@@ -2,10 +2,21 @@
   "name": "catalogo-gol",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Catálogo estático de modelos 3D — alternativas para brindes corporativos",
   "scripts": {
-    "dev": "serve -l 3000 --no-clipboard .",
-    "start": "serve -l 3000 --no-clipboard ."
+    "dev": "node ./scripts/dev.mjs",
+    "dev:front": "serve -l 3000 --no-clipboard .",
+    "dev:back": "node ./server/index.js",
+    "start": "node ./scripts/dev.mjs",
+    "start:front": "serve -l 3000 --no-clipboard .",
+    "start:back": "node ./server/index.js",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "serve": "^14.2.4"

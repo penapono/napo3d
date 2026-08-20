@@ -17,11 +17,21 @@
 
 <body>
   <header class="site-header">
-    <div class="container nav-wrap"><a class="brand" href="#top" aria-label="Voltar ao início"><span
-          class="brand-mark">3D</span><span>Não há nada que a gente não resolva</span></a>
-<nav aria-label="Navegação principal"><a href="#catalogo">Catálogo</a><a href="#como-funciona">Como funciona</a><button class="nav-account" id="account-open" type="button">Minha conta</button><button class="nav-cart" id="cart-open" type="button" aria-label="Abrir carrinho">Carrinho <span id="cart-count-top">0</span></button></nav>
+    <div class="container nav-wrap">
+      <a class="brand" href="#top" aria-label="Voltar ao início">
+        <span class="brand-mark">3D</span>
+        <span>Não há nada que a gente não resolva</span>
+      </a>
+      <nav aria-label="Navegação principal">
+        <a href="#catalogo">Catálogo</a>
+        <a href="#como-funciona">Como funciona</a>
+        <button class="nav-account" id="account-open" type="button">Minha conta</button>
+        <button class="nav-cart" id="cart-open" type="button" aria-label="Abrir carrinho">Carrinho <span
+            id="cart-count-top">0</span></button>
+      </nav>
     </div>
   </header>
+
   <main id="top">
     <section class="hero">
       <div class="container hero-grid">
@@ -29,10 +39,14 @@
           <p class="eyebrow">Peças que dão vontade de ter</p>
           <h1>Encontre algo <em>feito</em> para o seu espaço.</h1>
           <p class="hero-text">Objetos impressos em 3D para organizar, decorar e deixar a rotina mais gostosa. Escolha
-            seu favorito e peça uma cotação.</p><a class="button button-primary" href="#catalogo">Ver peças disponíveis
+            seu favorito e peça uma cotação.</p>
+          <a class="button button-primary" href="#catalogo">Ver peças disponíveis
             <span aria-hidden="true">↓</span></a>
         </div>
-        <div class="hero-art" aria-label="Timelapse de uma peça sendo impressa em 3D"><img class="hero-gif" src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNmF2ODA1NW14aHFwOWxncmUzdzJmdnM5ZXAydjF2cW56dWltcjBkNSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/BINkTZl70NCv0QpdgU/giphy.gif" alt="Objeto sendo impresso em 3D em timelapse" onerror="this.hidden=true" />
+        <div class="hero-art" aria-label="Timelapse de uma peça sendo impressa em 3D">
+          <img class="hero-gif"
+            src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNmF2ODA1NW14aHFwOWxncmUzdzJmdnM5ZXAydjF2cW56dWltcjBkNSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/BINkTZl70NCv0QpdgU/giphy.gif"
+            alt="Objeto sendo impresso em 3D em timelapse" onerror="this.hidden=true" />
           <div class="art-card art-card-main"><span class="art-kicker">feito sob demanda</span><strong>Pequenos
               objetos,<br />grandes detalhes.</strong><span class="art-line"></span></div>
           <div class="art-card art-card-side"><span>seu próximo<br /><b>favorito</b></span></div>
@@ -41,6 +55,7 @@
         </div>
       </div>
     </section>
+
     <section class="catalog-section" id="catalogo">
       <div class="container">
         <div class="section-intro">
@@ -50,12 +65,74 @@
           </div>
           <p class="intro-note">Preços apresentados por peça. Cada pedido é produzido com cuidado.</p>
         </div>
-        <div class="toolbar" aria-label="Filtros do catálogo"><div class="filter-pills" id="category-filters"><button class="pill active" data-category="all">Tudo</button><button class="pill" data-category="Organização">Organização</button><button class="pill" data-category="Casa">Casa</button><button class="pill" data-category="Presentes">Presentes</button><button class="pill" data-category="Diversão">Diversão</button></div><div class="catalog-controls"><label class="search-box"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="O que você está procurando?" aria-label="Buscar produtos" /></label><label class="sort-box"><span>Ordenar</span><select id="sort" aria-label="Ordenar produtos"><option value="recommended">Mais queridos</option><option value="price">Menor valor</option><option value="name">Nome A–Z</option></select></label></div></div>
+        <div class="toolbar" aria-label="Filtros do catálogo">
+          <div class="filter-pills" id="category-filters"></div>
+          <div class="catalog-controls">
+            <label class="search-box">
+              <span aria-hidden="true">⌕</span>
+              <input id="search" type="search" placeholder="O que você está procurando?" aria-label="Buscar produtos" />
+            </label>
+            <label class="sort-box">
+              <span>Ordenar</span>
+              <select id="sort" aria-label="Ordenar produtos">
+                <option value="recommended">Mais queridos</option>
+                <option value="price">Menor valor</option>
+                <option value="name">Nome A–Z</option>
+              </select>
+            </label>
+          </div>
+        </div>
         <div class="catalog-grid" id="catalog-grid" aria-live="polite"></div>
-        <nav class="pagination" id="pagination" aria-label="Paginação do catálogo"></nav><aside class="cart-panel" id="cart-panel" aria-label="Carrinho de compras"><div class="cart-header"><div><span class="eyebrow">Seu pedido</span><h2>Meu carrinho <span id="cart-count">0</span></h2></div><button class="cart-close" id="cart-close" type="button" aria-label="Fechar carrinho">×</button></div><div id="cart-items"><p class="cart-empty">Seu carrinho está vazio.</p></div><div class="cart-total"><span>Total estimado</span><strong id="cart-total">R$ 0,00</strong></div><div class="production-estimate">Estimativa de produção<strong id="production-total">0 horas</strong></div><button class="quote-button" id="checkout-start" type="button">Concluir compra</button><p class="form-status" id="form-status" role="status"></p></aside>
-        <p class="empty-state" id="empty-state" hidden>Não encontramos uma peça com esse nome. Tente outra busca.</p><dialog class="quantity-dialog" id="quantity-dialog"><button class="dialog-close" id="quantity-close" type="button" aria-label="Fechar">×</button><span class="eyebrow">Adicionar ao carrinho</span><h2 id="quantity-title">Escolha a quantidade</h2><p id="quantity-description"></p><div class="quantity-preview"><img id="quantity-image" alt=""><div><span>Preço por peça</span><strong id="quantity-unit-price">R$ 0,00</strong><small id="quantity-total-price">Total: R$ 0,00</small><small id="quantity-production-time">Produção estimada: 0m</small></div></div><label class="quantity-label">Quantidade<div class="quantity-control"><button type="button" data-quantity-delta="-1" aria-label="Diminuir uma unidade">−</button><input id="quantity-input" type="number" min="1" step="1" value="1" readonly aria-readonly="true"><button type="button" data-quantity-delta="1" aria-label="Aumentar uma unidade">+</button></div></label><div class="quantity-shortcuts"><button type="button" data-quantity-delta="10">+10</button><button type="button" data-quantity-delta="-10">−10</button><button type="button" data-quantity-delta="50">+50</button><button type="button" data-quantity-delta="-50">−50</button><button type="button" data-quantity-delta="100">+100</button><button type="button" data-quantity-delta="-100">−100</button></div><button class="button button-primary" id="quantity-confirm" type="button">Adicionar ao carrinho</button></dialog>
+        <nav class="pagination" id="pagination" aria-label="Paginação do catálogo"></nav>
+        <aside class="cart-panel" id="cart-panel" aria-label="Carrinho de compras">
+          <div class="cart-header">
+            <div><span class="eyebrow">Seu pedido</span>
+              <h2>Meu carrinho <span id="cart-count">0</span></h2>
+            </div>
+            <button class="cart-close" id="cart-close" type="button" aria-label="Fechar carrinho">×</button>
+          </div>
+          <div id="cart-items"><p class="cart-empty">Seu carrinho está vazio.</p></div>
+          <div class="cart-total"><span>Total estimado</span><strong id="cart-total">R$ 0,00</strong></div>
+          <div class="production-estimate">Estimativa de produção<strong id="production-total">0 horas</strong></div>
+          <button class="quote-button" id="checkout-start" type="button">Concluir compra</button>
+          <p class="form-status" id="form-status" role="status"></p>
+        </aside>
+        <p class="empty-state" id="empty-state" hidden>Não encontramos uma peça com esse nome. Tente outra busca.</p>
+
+        <dialog class="quantity-dialog" id="quantity-dialog">
+          <button class="dialog-close" id="quantity-close" type="button" aria-label="Fechar">×</button>
+          <span class="eyebrow">Adicionar ao carrinho</span>
+          <h2 id="quantity-title">Escolha a quantidade</h2>
+          <p id="quantity-description"></p>
+          <div class="quantity-preview">
+            <img id="quantity-image" alt="">
+            <div>
+              <span>Preço por peça</span>
+              <strong id="quantity-unit-price">R$ 0,00</strong>
+              <small id="quantity-total-price">Total: R$ 0,00</small>
+              <small id="quantity-production-time">Produção estimada: 0m</small>
+            </div>
+          </div>
+          <label class="quantity-label">Quantidade
+            <div class="quantity-control">
+              <button type="button" data-quantity-delta="-1" aria-label="Diminuir uma unidade">−</button>
+              <input id="quantity-input" type="number" min="1" step="1" value="1">
+              <button type="button" data-quantity-delta="1" aria-label="Aumentar uma unidade">+</button>
+            </div>
+          </label>
+          <div class="quantity-shortcuts">
+            <button type="button" data-quantity-delta="10">+10</button>
+            <button type="button" data-quantity-delta="-10">−10</button>
+            <button type="button" data-quantity-delta="50">+50</button>
+            <button type="button" data-quantity-delta="-50">−50</button>
+            <button type="button" data-quantity-delta="100">+100</button>
+            <button type="button" data-quantity-delta="-100">−100</button>
+          </div>
+          <button class="button button-primary" id="quantity-confirm" type="button">Adicionar ao carrinho</button>
+        </dialog>
       </div>
     </section>
+
     <section class="how-section" id="como-funciona">
       <div class="container how-grid">
         <div>
@@ -84,12 +161,130 @@
         </div>
       </div>
     </section>
-  <a class="floating-top-button" id="floating-top-button" href="#top" aria-label="Voltar ao topo" title="Voltar ao topo">↑</a></main><section class="store-page" id="cart-page" hidden><div class="container store-page-inner"><a class="back-link" href="./index.html">← Continuar comprando</a><span class="eyebrow">Seu pedido</span><h1>Seu carrinho</h1><div class="page-cart-items" id="page-cart-items"></div><div class="page-cart-summary"><div><span>Total estimado</span><strong id="page-cart-total">R$ 0,00</strong></div><div><span>Produção estimada</span><strong id="page-production-total">0m</strong></div><button class="button button-primary" id="page-checkout-start" type="button">Concluir compra</button></div></div></section><section class="store-page" id="account-page" hidden><div class="container store-page-inner"><span class="eyebrow">Área do cliente</span><h1>Minha conta</h1><p class="page-lead">Acesse seus dados e acompanhe seus pedidos.</p><form class="account-page-form" id="account-page-form"><label>Nome completo<input name="accountName" autocomplete="name" required></label><label>E-mail<input name="accountEmail" type="email" autocomplete="email" required></label><label>Senha<input name="accountPassword" type="password" minlength="4" required></label><label>Telefone<input name="accountPhone" autocomplete="tel"></label><button class="button button-primary" type="submit">Entrar e salvar dados</button><p class="form-status" id="account-page-status" role="status"></p></form><div id="account-orders"></div></div></section><section class="store-page" id="shipping-page" hidden><div class="container store-page-inner"><span class="eyebrow">Última etapa</span><h1>Endereço e envio</h1><p class="page-lead">Preencha o CEP para buscar automaticamente seu endereço.</p><form class="shipping-form" id="shipping-form"><label>CEP<input name="postalCode" id="shipping-postal-code" inputmode="numeric" autocomplete="postal-code" required></label><label>Rua<input name="street" id="shipping-street" autocomplete="street-address" required></label><div class="form-row"><label>Número<input name="number" required></label><label>Complemento<input name="complement"></label></div><div class="form-row"><label>Cidade<input name="city" id="shipping-city" required></label><label>UF<input name="state" id="shipping-state" maxlength="2" required></label></div><p class="form-status" id="shipping-status" role="status"></p><button class="button button-primary" type="submit">Confirmar pedido</button></form></div></section><dialog class="account-dialog" id="account-dialog"><button class="dialog-close" id="account-close" type="button" aria-label="Fechar">×</button><span class="eyebrow">Área do cliente</span><h2>Minha conta</h2><p>Salve seus dados para agilizar próximos pedidos.</p><form id="account-form"><label>Nome completo<input name="accountName" autocomplete="name" required></label><label>E-mail<input name="accountEmail" type="email" autocomplete="email" required></label><label>Telefone<input name="accountPhone" autocomplete="tel"></label><button class="button button-primary" type="submit">Salvar meus dados</button><p class="form-status" id="account-status" role="status"></p></form></dialog><dialog class="checkout-dialog" id="checkout-dialog"><button class="dialog-close" id="checkout-close" type="button" aria-label="Fechar">×</button><span class="eyebrow">Finalizar compra</span><h2 id="checkout-title">Entrar para continuar</h2><form id="checkout-form"><div id="login-step"><label>E-mail<input name="loginEmail" type="email" autocomplete="email" required></label><label>Senha<input name="loginPassword" type="password" autocomplete="current-password" required></label><button class="button button-primary" type="submit">Entrar</button></div><div id="address-step" hidden><p class="checkout-welcome">Conta identificada. Agora informe onde devemos entregar.</p><fieldset><legend>Endereço de entrega</legend><label>CEP<input name="postalCode" inputmode="numeric" autocomplete="postal-code"></label><label>Rua<input name="street" autocomplete="street-address"></label><div class="form-row"><label>Número<input name="number" autocomplete="address-line2"></label><label>UF<input name="state" maxlength="2" autocomplete="address-level1"></label></div><label>Cidade<input name="city" autocomplete="address-level2"></label></fieldset><button class="button button-primary" type="submit">Confirmar pedido</button></div><p class="form-status" id="checkout-status" role="status"></p></form></dialog><footer class="site-footer">
+
+    <a class="floating-top-button" id="floating-top-button" href="#top" aria-label="Voltar ao topo"
+      title="Voltar ao topo">↑</a>
+  </main>
+
+  <section class="store-page" id="cart-page" hidden>
+    <div class="container store-page-inner">
+      <a class="back-link" href="./index.html">← Continuar comprando</a>
+      <span class="eyebrow">Seu pedido</span>
+      <h1>Seu carrinho</h1>
+      <div class="page-cart-items" id="page-cart-items"></div>
+      <div class="page-cart-summary">
+        <div><span>Total estimado</span><strong id="page-cart-total">R$ 0,00</strong></div>
+        <div><span>Produção estimada</span><strong id="page-production-total">0m</strong></div>
+        <button class="button button-primary" id="page-checkout-start" type="button">Concluir compra</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="store-page" id="account-page" hidden>
+    <div class="container store-page-inner">
+      <span class="eyebrow">Área do cliente</span>
+      <h1>Minha conta</h1>
+      <p class="page-lead" id="account-mode-label">Entre para concluir a compra e acompanhar seus pedidos.</p>
+      <div class="inline-badge" id="backend-badge">Modo mock local</div>
+      <div class="segmented-controls">
+        <button class="segmented-button is-active" data-auth-mode="login" type="button">Entrar</button>
+        <button class="segmented-button" data-auth-mode="register" type="button">Criar conta</button>
+      </div>
+      <form class="account-page-form" id="account-page-form">
+        <label id="account-name-field" hidden>Nome completo<input name="accountName" autocomplete="name"></label>
+        <label>E-mail<input name="accountEmail" type="email" autocomplete="email" required></label>
+        <label>Senha<input name="accountPassword" type="password" minlength="8" required></label>
+        <label>Telefone<input name="accountPhone" autocomplete="tel"></label>
+        <button class="button button-primary" id="account-submit" type="submit">Entrar</button>
+        <p class="form-status" id="account-page-status" role="status"></p>
+      </form>
+      <div id="account-summary" hidden></div>
+      <div class="inline-actions" id="account-actions" hidden></div>
+      <section class="info-section">
+        <div class="section-heading">
+          <h2>Pedidos</h2>
+          <p>Seus pedidos continuam visíveis mesmo quando a API real não estiver disponível.</p>
+        </div>
+        <div class="info-list" id="account-orders"></div>
+      </section>
+    </div>
+  </section>
+
+  <section class="store-page" id="shipping-page" hidden>
+    <div class="container store-page-inner">
+      <span class="eyebrow">Última etapa</span>
+      <h1>Endereço e revisão</h1>
+      <p class="page-lead">Salve um endereço, recalcule o pedido e confirme a compra.</p>
+      <div class="inline-badge" id="shipping-backend-badge">Modo mock local</div>
+      <div class="shipping-layout">
+        <div>
+          <section class="info-section">
+            <div class="section-heading">
+              <h2>Endereços salvos</h2>
+              <p>Selecione um endereço para recalcular o pedido.</p>
+            </div>
+            <div class="info-list" id="shipping-addresses"></div>
+          </section>
+          <section class="info-section">
+            <div class="section-heading">
+              <h2 id="shipping-form-title">Novo endereço</h2>
+              <p>Você pode criar ou editar o endereço sem sair do checkout.</p>
+            </div>
+            <form class="shipping-form" id="shipping-form">
+              <label>Destinatário<input name="recipientName" autocomplete="name" required></label>
+              <label>CEP<input name="postalCode" id="shipping-postal-code" inputmode="numeric" autocomplete="postal-code"
+                  required></label>
+              <label>Rua<input name="street" id="shipping-street" autocomplete="street-address" required></label>
+              <div class="form-row">
+                <label>Número<input name="number" autocomplete="address-line2" required></label>
+                <label>Complemento<input name="complement"></label>
+              </div>
+              <div class="form-row">
+                <label>Bairro<input name="neighborhood" id="shipping-neighborhood"></label>
+                <label>Referência<input name="reference"></label>
+              </div>
+              <div class="form-row">
+                <label>Cidade<input name="city" id="shipping-city" required></label>
+                <label>UF<input name="state" id="shipping-state" maxlength="2" required></label>
+              </div>
+              <div class="inline-actions">
+                <button class="button button-primary" id="shipping-save-address" type="submit">Salvar endereço</button>
+                <button class="button button-secondary" id="shipping-cancel-edit" type="button">Limpar</button>
+              </div>
+              <p class="form-status" id="shipping-status" role="status"></p>
+            </form>
+          </section>
+        </div>
+
+        <aside class="checkout-review" id="shipping-review">
+          <div class="section-heading">
+            <h2>Resumo do pedido</h2>
+            <p>Os preços e o tempo de produção são recalculados no backend ou no mock local.</p>
+          </div>
+          <div class="empty-state-inline" id="shipping-empty-cart" hidden>Seu carrinho está vazio.</div>
+          <div class="info-list" id="shipping-quote-items"></div>
+          <div class="review-summary">
+            <div><span>Total confirmado</span><strong id="shipping-quote-total">R$ 0,00</strong></div>
+            <div><span>Produção estimada</span><strong id="shipping-quote-production">0m</strong></div>
+          </div>
+          <div class="inline-actions">
+            <button class="button button-secondary" id="shipping-quote-refresh" type="button">Recalcular</button>
+            <button class="button button-primary" id="shipping-submit" type="button">Confirmar pedido</button>
+          </div>
+          <p class="form-status" id="shipping-quote-status" role="status"></p>
+          <p class="form-status" id="shipping-order-status" role="status"></p>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site-footer">
     <div class="container footer-wrap">
       <p>Objetos úteis, bonitos e feitos com intenção.</p><strong class="footer-brand">Napo3D™</strong>
     </div>
   </footer>
-  <script src="./js/app.js" defer></script>
+
+  <script src="./js/app.js" type="module"></script>
 </body>
 
 </html>

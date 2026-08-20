@@ -1,0 +1,437 @@
+import { Pool } from 'pg';
+
+export const DEFAULT_DATABASE_URL = 'postgresql://napo3d:napo3d@127.0.0.1:5432/napo3d_development';
+
+const EMPTY_STORE = {
+  users: [],
+  sessions: [],
+  addresses: [],
+  orders: [],
+  idempotencyKeys: [],
+  emails: []
+};
+
+const STORE_LOCK_KEY = 3345103;
+
+const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS users (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  email text NOT NULL UNIQUE,
+  phone text,
+  password_hash text NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token text PRIMARY KEY,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS addresses (
+  id text PRIMARY KEY,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  recipient_name text NOT NULL,
+  postal_code text NOT NULL,
+  street text NOT NULL,
+  number text NOT NULL,
+  complement text,
+  neighborhood text,
+  city text NOT NULL,
+  state text NOT NULL,
+  reference text,
+  is_default boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+  id text PRIMARY KEY,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status text NOT NULL,
+  customer_name text NOT NULL,
+  customer_email text NOT NULL,
+  customer_phone text,
+  address_snapshot jsonb NOT NULL,
+  subtotal integer NOT NULL,
+  shipping integer NOT NULL,
+  total integer NOT NULL,
+  production_estimate_hours double precision NOT NULL DEFAULT 0,
+  notes text,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS order_items (
+  id text PRIMARY KEY,
+  order_id text NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  position integer NOT NULL,
+  product_id text NOT NULL,
+  option_name text NOT NULL,
+  product_name_snapshot text NOT NULL,
+  unit_weight_grams integer NOT NULL,
+  quantity integer NOT NULL,
+  unit_price integer NOT NULL,
+  line_total integer NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  id text PRIMARY KEY,
+  request_key text NOT NULL,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  order_id text NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  response_payload jsonb NOT NULL,
+  created_at timestamptz NOT NULL,
+  UNIQUE (user_id, request_key)
+);
+
+CREATE TABLE IF NOT EXISTS emails (
+  id text PRIMARY KEY,
+  type text NOT NULL,
+  recipient_email text NOT NULL,
+  order_id text NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL
+);
+`;
+
+export function createMemoryStore(initialState = EMPTY_STORE) {
+  let state = structuredClone({ ...EMPTY_STORE, ...initialState });
+
+  return {
+    async init() {},
+    async read() {
+      return structuredClone(state);
+    },
+    async write(nextStore) {
+      state = structuredClone(withStoreDefaults(nextStore));
+      return structuredClone(state);
+    },
+    async update(mutator) {
+      const nextStore = await mutator(structuredClone(state));
+      state = structuredClone(withStoreDefaults(nextStore));
+      return structuredClone(state);
+    },
+    async close() {}
+  };
+}
+
+export function createPostgresStore(options = {}) {
+  const connectionString = options.connectionString || process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
+  const pool = options.pool || new Pool({ connectionString });
+  let initPromise = null;
+
+  async function ensureReady() {
+    if (!initPromise) {
+      initPromise = (async () => {
+        const client = await pool.connect();
+        try {
+          await client.query(SCHEMA_SQL);
+        } finally {
+          client.release();
+        }
+      })();
+    }
+    return initPromise;
+  }
+
+  async function withClient(callback) {
+    await ensureReady();
+    const client = await pool.connect();
+    try {
+      return await callback(client);
+    } finally {
+      client.release();
+    }
+  }
+
+  return {
+    async init() {
+      await ensureReady();
+    },
+    async read() {
+      return withClient(readStore);
+    },
+    async write(nextStore) {
+      return withClient(async (client) => {
+        const store = withStoreDefaults(nextStore);
+        await client.query('BEGIN');
+        try {
+          await client.query('SELECT pg_advisory_xact_lock($1)', [STORE_LOCK_KEY]);
+          await replaceStore(client, store);
+          await client.query('COMMIT');
+          return structuredClone(store);
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      });
+    },
+    async update(mutator) {
+      return withClient(async (client) => {
+        await client.query('BEGIN');
+        try {
+          await client.query('SELECT pg_advisory_xact_lock($1)', [STORE_LOCK_KEY]);
+          const currentStore = await readStore(client);
+          const nextStore = withStoreDefaults(await mutator(structuredClone(currentStore)));
+          await replaceStore(client, nextStore);
+          await client.query('COMMIT');
+          return structuredClone(nextStore);
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      });
+    },
+    async close() {
+      await pool.end();
+    }
+  };
+}
+
+function withStoreDefaults(store) {
+  return {
+    users: Array.isArray(store?.users) ? store.users : [],
+    sessions: Array.isArray(store?.sessions) ? store.sessions : [],
+    addresses: Array.isArray(store?.addresses) ? store.addresses : [],
+    orders: Array.isArray(store?.orders) ? store.orders : [],
+    idempotencyKeys: Array.isArray(store?.idempotencyKeys) ? store.idempotencyKeys : [],
+    emails: Array.isArray(store?.emails) ? store.emails : []
+  };
+}
+
+async function readStore(client) {
+  const usersResult = await client.query('SELECT * FROM users ORDER BY created_at ASC, id ASC');
+  const sessionsResult = await client.query('SELECT * FROM sessions ORDER BY created_at ASC, token ASC');
+  const addressesResult = await client.query('SELECT * FROM addresses ORDER BY created_at ASC, id ASC');
+  const ordersResult = await client.query('SELECT * FROM orders ORDER BY created_at ASC, id ASC');
+  const orderItemsResult = await client.query('SELECT * FROM order_items ORDER BY order_id ASC, position ASC, id ASC');
+  const idempotencyResult = await client.query('SELECT * FROM idempotency_keys ORDER BY created_at ASC, id ASC');
+  const emailsResult = await client.query('SELECT * FROM emails ORDER BY created_at ASC, id ASC');
+
+  const itemsByOrderId = new Map();
+  for (const row of orderItemsResult.rows) {
+    const items = itemsByOrderId.get(row.order_id) || [];
+    items.push({
+      id: row.id,
+      orderId: row.order_id,
+      productId: row.product_id,
+      optionName: row.option_name,
+      productNameSnapshot: row.product_name_snapshot,
+      unitWeightGrams: Number(row.unit_weight_grams),
+      quantity: Number(row.quantity),
+      unitPrice: Number(row.unit_price),
+      lineTotal: Number(row.line_total)
+    });
+    itemsByOrderId.set(row.order_id, items);
+  }
+
+  return {
+    users: usersResult.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      phone: undefinedIfNull(row.phone),
+      passwordHash: row.password_hash,
+      createdAt: asIsoString(row.created_at),
+      updatedAt: asIsoString(row.updated_at)
+    })),
+    sessions: sessionsResult.rows.map((row) => ({
+      token: row.token,
+      userId: row.user_id,
+      createdAt: asIsoString(row.created_at)
+    })),
+    addresses: addressesResult.rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      recipientName: row.recipient_name,
+      postalCode: row.postal_code,
+      street: row.street,
+      number: row.number,
+      complement: undefinedIfNull(row.complement),
+      neighborhood: undefinedIfNull(row.neighborhood),
+      city: row.city,
+      state: row.state,
+      reference: undefinedIfNull(row.reference),
+      isDefault: row.is_default,
+      createdAt: asIsoString(row.created_at),
+      updatedAt: asIsoString(row.updated_at)
+    })),
+    orders: ordersResult.rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      status: row.status,
+      customerName: row.customer_name,
+      customerEmail: row.customer_email,
+      customerPhone: undefinedIfNull(row.customer_phone),
+      addressSnapshot: row.address_snapshot || {},
+      items: itemsByOrderId.get(row.id) || [],
+      subtotal: Number(row.subtotal),
+      shipping: Number(row.shipping),
+      total: Number(row.total),
+      productionEstimateHours: Number(row.production_estimate_hours),
+      notes: undefinedIfNull(row.notes),
+      createdAt: asIsoString(row.created_at),
+      updatedAt: asIsoString(row.updated_at)
+    })),
+    idempotencyKeys: idempotencyResult.rows.map((row) => ({
+      id: row.id,
+      key: row.request_key,
+      userId: row.user_id,
+      orderId: row.order_id,
+      response: row.response_payload,
+      createdAt: asIsoString(row.created_at)
+    })),
+    emails: emailsResult.rows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      to: row.recipient_email,
+      orderId: row.order_id,
+      createdAt: asIsoString(row.created_at)
+    }))
+  };
+}
+
+async function replaceStore(client, nextStore) {
+  await client.query('DELETE FROM order_items');
+  await client.query('DELETE FROM idempotency_keys');
+  await client.query('DELETE FROM emails');
+  await client.query('DELETE FROM sessions');
+  await client.query('DELETE FROM addresses');
+  await client.query('DELETE FROM orders');
+  await client.query('DELETE FROM users');
+
+  for (const user of nextStore.users) {
+    await client.query(
+      `INSERT INTO users (id, name, email, phone, password_hash, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        user.id,
+        user.name,
+        user.email,
+        nullIfEmpty(user.phone),
+        user.passwordHash,
+        asTimestamp(user.createdAt),
+        asTimestamp(user.updatedAt)
+      ]
+    );
+  }
+
+  for (const session of nextStore.sessions) {
+    await client.query(
+      'INSERT INTO sessions (token, user_id, created_at) VALUES ($1, $2, $3)',
+      [session.token, session.userId, asTimestamp(session.createdAt)]
+    );
+  }
+
+  for (const address of nextStore.addresses) {
+    await client.query(
+      `INSERT INTO addresses (
+         id, user_id, recipient_name, postal_code, street, number, complement,
+         neighborhood, city, state, reference, is_default, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      [
+        address.id,
+        address.userId,
+        address.recipientName,
+        address.postalCode,
+        address.street,
+        address.number,
+        nullIfEmpty(address.complement),
+        nullIfEmpty(address.neighborhood),
+        address.city,
+        address.state,
+        nullIfEmpty(address.reference),
+        Boolean(address.isDefault),
+        asTimestamp(address.createdAt),
+        asTimestamp(address.updatedAt)
+      ]
+    );
+  }
+
+  for (const order of nextStore.orders) {
+    await client.query(
+      `INSERT INTO orders (
+         id, user_id, status, customer_name, customer_email, customer_phone,
+         address_snapshot, subtotal, shipping, total, production_estimate_hours,
+         notes, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14)`,
+      [
+        order.id,
+        order.userId,
+        order.status,
+        order.customerName,
+        order.customerEmail,
+        nullIfEmpty(order.customerPhone),
+        JSON.stringify(order.addressSnapshot || {}),
+        Number(order.subtotal || 0),
+        Number(order.shipping || 0),
+        Number(order.total || 0),
+        Number(order.productionEstimateHours || 0),
+        nullIfEmpty(order.notes),
+        asTimestamp(order.createdAt),
+        asTimestamp(order.updatedAt)
+      ]
+    );
+
+    for (const [position, item] of (order.items || []).entries()) {
+      await client.query(
+        `INSERT INTO order_items (
+           id, order_id, position, product_id, option_name, product_name_snapshot,
+           unit_weight_grams, quantity, unit_price, line_total
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          item.id,
+          order.id,
+          position,
+          item.productId,
+          item.optionName,
+          item.productNameSnapshot,
+          Number(item.unitWeightGrams || 0),
+          Number(item.quantity || 0),
+          Number(item.unitPrice || 0),
+          Number(item.lineTotal || 0)
+        ]
+      );
+    }
+  }
+
+  for (const entry of nextStore.idempotencyKeys) {
+    await client.query(
+      `INSERT INTO idempotency_keys (id, request_key, user_id, order_id, response_payload, created_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
+      [
+        entry.id,
+        entry.key,
+        entry.userId,
+        entry.orderId,
+        JSON.stringify(entry.response || {}),
+        asTimestamp(entry.createdAt)
+      ]
+    );
+  }
+
+  for (const email of nextStore.emails) {
+    await client.query(
+      'INSERT INTO emails (id, type, recipient_email, order_id, created_at) VALUES ($1, $2, $3, $4, $5)',
+      [email.id, email.type, email.to, email.orderId, asTimestamp(email.createdAt)]
+    );
+  }
+}
+
+function nullIfEmpty(value) {
+  return value == null || value === '' ? null : value;
+}
+
+function undefinedIfNull(value) {
+  return value == null ? undefined : value;
+}
+
+function asTimestamp(value) {
+  return value instanceof Date ? value : new Date(value);
+}
+
+function asIsoString(value) {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}

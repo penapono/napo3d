@@ -1,0 +1,50 @@
+name: napo3d
+
+x-api-environment: &api-environment
+  DATABASE_URL: postgresql://${POSTGRES_USER:-napo3d}:${POSTGRES_PASSWORD:-napo3d}@db:5432/${POSTGRES_DB:-napo3d_development}
+  HOST: 0.0.0.0
+  PORT: "3001"
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-napo3d_development}
+      POSTGRES_USER: ${POSTGRES_USER:-napo3d}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-napo3d}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-napo3d} -d ${POSTGRES_DB:-napo3d_development}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - napo3d_postgres:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    environment:
+      <<: *api-environment
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3001:3001"
+
+  front:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  napo3d_postgres:

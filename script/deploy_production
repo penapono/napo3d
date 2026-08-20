@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly APP_DIR=/srv/napo3d/current
+readonly COMPOSE_FILE=compose.production.yml
+readonly ENV_FILE=.env.production
+readonly FRONT_HEALTH_URL=http://127.0.0.1:3500/
+readonly API_HEALTH_URL=http://127.0.0.1:3501/api/health
+
+cd "$APP_DIR"
+
+exec 9>/tmp/napo3d-production-deploy.lock
+if ! flock -n 9; then
+  echo 'Another napo3d deploy is already in progress.' >&2
+  exit 1
+fi
+
+if [[ ! -f "$ENV_FILE" || ! -f "$COMPOSE_FILE" ]]; then
+  echo 'Production configuration files not found.' >&2
+  exit 1
+fi
+
+compose=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+
+echo 'Building application images...'
+"${compose[@]}" build --pull front api
+
+echo 'Publishing containers...'
+"${compose[@]}" up -d --remove-orphans
+
+echo 'Validating storefront health...'
+curl --fail --silent --show-error \
+  --retry 10 --retry-delay 5 --retry-all-errors \
+  "$FRONT_HEALTH_URL" >/dev/null
+
+echo 'Validating API health...'
+curl --fail --silent --show-error \
+  --retry 10 --retry-delay 5 --retry-all-errors \
+  "$API_HEALTH_URL" >/dev/null
+
+"${compose[@]}" ps
+docker image prune -f
+
+echo "Deploy finished at $(git rev-parse --short HEAD)."

@@ -1,0 +1,197 @@
+export const PRICE_TIERS = [
+  { label: 'Até 50 un.', maxQuantity: 50, rate: 375 },
+  { label: '51 a 100 un.', maxQuantity: 100, rate: 325 },
+  { label: 'Mais de 100 un.', maxQuantity: Infinity, rate: 275 }
+];
+
+export const ADDRESS_REQUIRED_FIELDS = [
+  'recipientName',
+  'postalCode',
+  'street',
+  'number',
+  'city',
+  'state'
+];
+
+export const DEFAULT_PRODUCTION_TIME_MINUTES = 60;
+export const DEFAULT_MAX_ITEM_QUANTITY = 1000;
+
+export function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+export function digitsOnly(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+export function normalizePostalCode(value) {
+  return digitsOnly(value).slice(0, 8);
+}
+
+export function normalizeState(value) {
+  return String(value || '').trim().toUpperCase().slice(0, 2);
+}
+
+export function normalizeOptionalText(value) {
+  const trimmed = String(value || '').trim();
+  return trimmed || undefined;
+}
+
+export function normalizeRequiredText(value) {
+  return String(value || '').trim();
+}
+
+export function normalizeAddressInput(address = {}) {
+  return {
+    recipientName: normalizeRequiredText(address.recipientName),
+    postalCode: normalizePostalCode(address.postalCode),
+    street: normalizeRequiredText(address.street),
+    number: normalizeRequiredText(address.number),
+    complement: normalizeOptionalText(address.complement),
+    neighborhood: normalizeOptionalText(address.neighborhood),
+    city: normalizeRequiredText(address.city),
+    state: normalizeState(address.state),
+    reference: normalizeOptionalText(address.reference),
+    isDefault: Boolean(address.isDefault)
+  };
+}
+
+export function validateAddressInput(address = {}) {
+  const normalized = normalizeAddressInput(address);
+  for (const field of ADDRESS_REQUIRED_FIELDS) {
+    if (!normalized[field]) {
+      return { ok: false, code: 'INVALID_ADDRESS', message: `Campo obrigatório ausente: ${field}`, address: normalized };
+    }
+  }
+  if (normalized.postalCode.length !== 8) {
+    return { ok: false, code: 'INVALID_ADDRESS', message: 'CEP deve conter 8 dígitos.', address: normalized };
+  }
+  if (normalized.state.length !== 2) {
+    return { ok: false, code: 'INVALID_ADDRESS', message: 'UF deve conter 2 letras.', address: normalized };
+  }
+  return { ok: true, address: normalized };
+}
+
+export function resolvePriceTier(quantity) {
+  return PRICE_TIERS.find((tier) => quantity <= tier.maxQuantity) || PRICE_TIERS[PRICE_TIERS.length - 1];
+}
+
+export function weightInGrams(option) {
+  const grams = Number(option?.weight);
+  return Number.isFinite(grams) ? grams : null;
+}
+
+export function unitPriceFromWeight(weight, quantity) {
+  if (!Number.isFinite(weight)) return null;
+  return Math.round(weight * resolvePriceTier(quantity).rate / 1000);
+}
+
+export function productionTimeMinutes(product) {
+  const minutes = Number(product?.productionTime);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_PRODUCTION_TIME_MINUTES;
+}
+
+export function lineProductionMinutes(product, quantity) {
+  return productionTimeMinutes(product) * quantity / 10;
+}
+
+export function buildQuote(items, resolveProduct, options = {}) {
+  const maxQuantity = options.maxQuantity || DEFAULT_MAX_ITEM_QUANTITY;
+  const normalizedItems = Array.isArray(items) ? items : [];
+  if (!normalizedItems.length) {
+    return {
+      items: [],
+      subtotal: 0,
+      shipping: 0,
+      total: 0,
+      productionEstimateHours: 0,
+      productionEstimateMinutes: 0
+    };
+  }
+
+  const quotedItems = normalizedItems.map((entry) => {
+    const quantity = Number(entry?.quantity);
+    if (!Number.isInteger(quantity) || quantity <= 0 || quantity > maxQuantity) {
+      const error = new Error('Quantidade inválida.');
+      error.code = 'INVALID_QUANTITY';
+      throw error;
+    }
+
+    const product = resolveProduct(entry?.productId);
+    if (!product) {
+      const error = new Error(`Produto não encontrado: ${entry?.productId}`);
+      error.code = 'PRODUCT_NOT_FOUND';
+      throw error;
+    }
+
+    const option = (product.options || []).find((candidate) => candidate.name === entry?.optionName);
+    if (!option) {
+      const error = new Error(`Variação não encontrada: ${entry?.optionName}`);
+      error.code = 'OPTION_NOT_FOUND';
+      throw error;
+    }
+
+    const unitWeightGrams = weightInGrams(option);
+    if (!Number.isFinite(unitWeightGrams)) {
+      const error = new Error(`Peso inválido para ${product.name} - ${option.name}`);
+      error.code = 'INVALID_WEIGHT';
+      throw error;
+    }
+
+    const unitPrice = unitPriceFromWeight(unitWeightGrams, quantity);
+    const lineTotal = unitPrice * quantity;
+    const productionMinutes = lineProductionMinutes(product, quantity);
+
+    return {
+      productId: product.id,
+      optionName: option.name,
+      productNameSnapshot: product.name,
+      unitWeightGrams,
+      quantity,
+      unitPrice,
+      lineTotal,
+      productionTimeMinutes: productionTimeMinutes(product),
+      productionLineMinutes: productionMinutes,
+      imageUrl: option.imageUrl || '',
+      category: product.category || '',
+      reference: product.reference || ''
+    };
+  });
+
+  const subtotal = quotedItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  const productionEstimateMinutes = quotedItems.reduce((sum, item) => sum + item.productionLineMinutes, 0);
+
+  return {
+    items: quotedItems,
+    subtotal,
+    shipping: 0,
+    total: subtotal,
+    productionEstimateHours: Number((productionEstimateMinutes / 60).toFixed(2)),
+    productionEstimateMinutes: Math.round(productionEstimateMinutes)
+  };
+}
+
+export function sortProducts(products, sort = 'recommended') {
+  const list = [...products];
+  if (sort === 'name') {
+    return list.sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
+  }
+  if (sort === 'price') {
+    return list.sort((left, right) => {
+      const leftPrice = minProductPrice(left);
+      const rightPrice = minProductPrice(right);
+      return leftPrice - rightPrice;
+    });
+  }
+  return list.sort((left, right) => productScore(right) - productScore(left));
+}
+
+function productScore(product) {
+  return Math.max(0, ...(product.options || []).map((option) => Number(option.score) || 0));
+}
+
+function minProductPrice(product) {
+  return Math.min(...(product.options || [])
+    .map((option) => unitPriceFromWeight(weightInGrams(option), 1))
+    .filter((price) => Number.isFinite(price)), Infinity);
+}
