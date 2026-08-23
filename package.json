@@ -6,10 +6,10 @@
   "description": "Catálogo estático de modelos 3D — alternativas para brindes corporativos",
   "scripts": {
     "dev": "node ./scripts/dev.mjs",
-    "dev:front": "serve -l 3000 --no-clipboard .",
+    "dev:front": "serve -s -l 3000 --no-clipboard .",
     "dev:back": "node ./server/index.js",
     "start": "node ./scripts/dev.mjs",
-    "start:front": "serve -l 3000 --no-clipboard .",
+    "start:front": "serve -s -l 3000 --no-clipboard .",
     "start:back": "node ./server/index.js",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",

@@ -61,6 +61,7 @@ async function loadCatalog() {
 function liveImplementation() {
   return {
     getProducts: (params) => request(`/api/products${queryString(params)}`),
+    getProduct: (id) => request(`/api/products/${encodeURIComponent(id)}`),
     register: (payload) =>
       request('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
     login: (payload) =>
@@ -215,6 +216,9 @@ export const apiClient = {
   },
   async getProducts(params) {
     return invoke('getProducts', params);
+  },
+  async getProduct(id) {
+    return invoke('getProduct', id);
   },
   async listAddresses() {
     return invoke('listAddresses');

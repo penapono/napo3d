@@ -45,6 +45,8 @@ const state = {
   quote: null,
   pendingItem: null,
   backendMode: 'mock',
+  productDetail: null,
+  productPageRequestKey: 0,
 };
 
 const ROUTE_PATHS = {
@@ -53,6 +55,7 @@ const ROUTE_PATHS = {
   account: '/minha-conta',
   shipping: '/endereco',
 };
+const PRODUCT_ROUTE_PREFIX = '/produtos';
 const LEGACY_ROUTE_MAP = {
   cart: 'cart',
   account: 'account',
@@ -66,10 +69,19 @@ const normalizePathname = (pathname) => {
   if (normalized === '/index.html') return '/';
   return normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized;
 };
-const pathForPage = (page) => ROUTE_PATHS[page] || ROUTE_PATHS.home;
+const productIdFromPathname = (pathname) => {
+  const normalized = normalizePathname(pathname);
+  if (!normalized.startsWith(`${PRODUCT_ROUTE_PREFIX}/`)) return '';
+  return decodeURIComponent(normalized.slice(PRODUCT_ROUTE_PREFIX.length + 1));
+};
+const pathForPage = (page, options = {}) =>
+  page === 'product' && options.productId
+    ? `${PRODUCT_ROUTE_PREFIX}/${encodeURIComponent(options.productId)}`
+    : ROUTE_PATHS[page] || ROUTE_PATHS.home;
 const pageForPathname = (pathname) => {
   const normalized = normalizePathname(pathname);
   if (normalized === ROUTE_PATHS.home) return null;
+  if (normalized.startsWith(`${PRODUCT_ROUTE_PREFIX}/`)) return 'product';
   return (
     Object.entries(ROUTE_PATHS).find(
       ([page, candidate]) => page !== 'home' && candidate === normalized
@@ -77,6 +89,7 @@ const pageForPathname = (pathname) => {
   );
 };
 const currentPage = () => pageForPathname(location.pathname);
+const currentProductId = () => productIdFromPathname(location.pathname);
 const money = (value) =>
   Number(value || 0).toLocaleString('pt-BR', {
     style: 'currency',
@@ -164,7 +177,7 @@ function consumePostAuthPath() {
 
 function navigateTo(page = null, options = {}) {
   const hash = options.hash ? `#${String(options.hash).replace(/^#/, '')}` : '';
-  const nextPath = pathForPage(page);
+  const nextPath = pathForPage(page, options);
   const nextUrl = `${nextPath}${hash}`;
   if (`${location.pathname}${location.hash}` !== nextUrl) {
     history[options.replace ? 'replaceState' : 'pushState']({}, '', nextUrl);
@@ -208,6 +221,13 @@ function productImage(item, option) {
   };
 }
 
+function productGalleryImages(item, option) {
+  const source = productImage(item, option);
+  return [
+    ...new Set([source.primary, ...(option.imageGallery || []), source.fallback].filter(Boolean)),
+  ];
+}
+
 function image(url, alt, fallbackUrl = '') {
   if (!url) return '<div class="image-fallback">Imagem<br>indisponível</div>';
   const fallback =
@@ -219,6 +239,19 @@ function image(url, alt, fallbackUrl = '') {
 
 function findProduct(productId) {
   return state.items.find((item) => item.id === productId) || null;
+}
+
+async function loadProductDetail(productId) {
+  if (!productId) return null;
+  const cached =
+    findProduct(productId) || (state.productDetail?.id === productId ? state.productDetail : null);
+  if (cached) {
+    state.productDetail = cached;
+    return cached;
+  }
+  const result = await apiClient.getProduct(productId);
+  state.productDetail = result.product || null;
+  return state.productDetail;
 }
 
 function cartLine(entry) {
@@ -260,6 +293,19 @@ function ratingMarkup(option) {
   return `<div class="product-rating" aria-label="Avaliação ${text(ratingLabel)} de 5 com ${text(countLabel)}"><span class="product-rating-stars" style="--rating-width:${text(width)}"><span aria-hidden="true">★★★★★</span></span><span class="product-rating-value">${text(ratingLabel)}</span>${Number.isFinite(ratingCount) && ratingCount > 0 ? `<span class="product-rating-count">(${text(ratingCount.toLocaleString('pt-BR'))})</span>` : ''}</div>`;
 }
 
+function tierPricesMarkup(item, option) {
+  return [
+    { label: 'Até 50 un.', quantity: 1 },
+    { label: '51 a 100 un.', quantity: 51 },
+    { label: 'Mais de 100 un.', quantity: 101 },
+  ]
+    .map(
+      (tier) =>
+        `<div class="tier-price"><span>${tier.label}</span><strong>${money(unitPriceFromWeight(weightInGrams(option), tier.quantity))}</strong><small class="tier-production-time">${text(formatTierProductionTime(lineProductionMinutes(item, tier.quantity, option)))}</small><small>por peça</small></div>`
+    )
+    .join('');
+}
+
 function cardAction(item, option) {
   if (state.me?.role === 'admin' && option?.url) {
     return `<a class="quote-button add-to-cart icon-action" href="${text(option.url)}" target="_blank" rel="noreferrer noopener" aria-label="Abrir ${text(item.name)} no MakerWorld" title="Abrir no MakerWorld"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i><span class="sr-only">Abrir no MakerWorld</span></a>`;
@@ -276,17 +322,7 @@ function card(item) {
     copy[item.category] ||
     'Uma peça especial, feita para fazer parte da sua rotina.';
   const imageSource = productImage(item, option);
-  const tierPrices = [
-    { label: 'Até 50 un.', quantity: 1 },
-    { label: '51 a 100 un.', quantity: 51 },
-    { label: 'Mais de 100 un.', quantity: 101 },
-  ]
-    .map(
-      (tier) =>
-        `<div class="tier-price"><span>${tier.label}</span><strong>${money(unitPriceFromWeight(weightInGrams(option), tier.quantity))}</strong><small class="tier-production-time">${text(formatTierProductionTime(lineProductionMinutes(item, tier.quantity, option)))}</small><small>por peça</small></div>`
-    )
-    .join('');
-  return `<article class="product-card"><div class="product-image">${image(imageSource.primary, item.name, imageSource.fallback)}<span class="product-tag">${text(item.category)}</span></div><div class="product-info"><h3>${text(item.name)}</h3>${ratingMarkup(option)}<p class="variant-name">${text(description)}</p><div class="tier-prices" aria-label="Preços por quantidade">${tierPrices}</div>${cardAction(item, option)}</div></article>`;
+  return `<article class="product-card" data-product-link="${text(item.id)}" tabindex="0" role="link" aria-label="Abrir página de ${text(item.name)}"><div class="product-image">${image(imageSource.primary, item.name, imageSource.fallback)}<span class="product-tag">${text(item.category)}</span></div><div class="product-info"><h3>${text(item.name)}</h3>${ratingMarkup(option)}<p class="variant-name">${text(description)}</p><div class="tier-prices" aria-label="Preços por quantidade">${tierPricesMarkup(item, option)}</div>${cardAction(item, option)}</div></article>`;
 }
 
 async function refreshCatalog() {
@@ -342,6 +378,121 @@ function renderCatalog() {
     .forEach((button) =>
       button.addEventListener('click', () => openQuantityDialog(button.dataset.productId))
     );
+  grid.querySelectorAll('[data-product-link]').forEach((article) => {
+    const openProductPage = () =>
+      navigateTo('product', { productId: article.dataset.productLink || '' });
+    article.addEventListener('click', (event) => {
+      if (event.target.closest('a, button, input, select, textarea, label')) return;
+      openProductPage();
+    });
+    article.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      openProductPage();
+    });
+  });
+}
+
+function productShareData(item) {
+  const url = new URL(
+    pathForPage('product', { productId: item.id }),
+    window.location.origin
+  ).toString();
+  const description =
+    item.summary ||
+    item.description ||
+    copy[item.category] ||
+    'Uma peça especial, feita para fazer parte da sua rotina.';
+  const message = `${item.name} — ${description}`;
+  return {
+    url,
+    message,
+    whatsappUrl: `https://wa.me/?text=${encodeURIComponent(`${message} ${url}`)}`,
+    facebookUrl: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
+  };
+}
+
+function detailPrimaryAction(item, option) {
+  if (state.me?.role === 'admin' && option?.url) {
+    return `<a class="button button-primary" href="${text(option.url)}" target="_blank" rel="noreferrer noopener"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Abrir no MakerWorld</a>`;
+  }
+  return `<button class="button button-primary" type="button" data-detail-add-to-cart="${text(item.id)}"><i class="fa-solid fa-cart-plus" aria-hidden="true"></i> Adicionar ao carrinho</button>`;
+}
+
+function renderProductPageContent(item) {
+  const shell = $('#product-page-shell');
+  if (!shell) return;
+  const option = primaryProductOption(item);
+  if (!option) {
+    shell.innerHTML = `<div class="info-section"><h1>${text(item.name)}</h1><p class="page-lead">Este produto ainda não possui uma configuração disponível para compra.</p></div>`;
+    return;
+  }
+  const gallery = productGalleryImages(item, option);
+  const summary =
+    item.summary ||
+    item.description ||
+    copy[item.category] ||
+    'Uma peça especial, feita para fazer parte da sua rotina.';
+  const body = item.description && item.description !== summary ? item.description : summary;
+  const share = productShareData(item);
+  const weight = Number(weightInGrams(option));
+  const baseProduction = lineProductionMinutes(item, 1, option);
+  shell.innerHTML = `<div class="product-detail-layout"><div class="product-detail-media"><div class="product-detail-hero">${image(gallery[0], item.name, gallery[1] || '')}</div>${gallery.length > 1 ? `<div class="product-detail-gallery" aria-label="Galeria do produto">${gallery.map((url, index) => `<button class="product-detail-thumb${index === 0 ? ' is-active' : ''}" type="button" data-product-image="${text(url)}" aria-label="Ver imagem ${index + 1}"><img src="${text(url)}" alt="Imagem ${index + 1} de ${text(item.name)}" loading="lazy" /></button>`).join('')}</div>` : ''}</div><div class="product-detail-content"><span class="eyebrow">${text(item.category)}</span><h1>${text(item.name)}</h1>${ratingMarkup(option)}<p class="page-lead">${text(summary)}</p><div class="product-detail-meta">${weight > 0 ? `<div><span>Peso estimado</span><strong>${text(`${weight.toLocaleString('pt-BR')} g`)}</strong></div>` : ''}${baseProduction > 0 ? `<div><span>Produção base</span><strong>${text(formatTierProductionTime(baseProduction))}</strong></div>` : ''}${option.url ? `<div><span>Origem</span><strong>MakerWorld</strong></div>` : ''}</div><div class="tier-prices product-detail-tiers" aria-label="Preços por quantidade">${tierPricesMarkup(item, option)}</div><div class="product-detail-actions">${detailPrimaryAction(item, option)}${typeof navigator.share === 'function' ? `<button class="button button-secondary" type="button" data-product-share="${text(item.id)}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Compartilhar</button>` : ''}</div><div class="product-share-panel"><strong>Compartilhar link</strong><div class="product-share-links"><a class="share-chip" href="${text(share.whatsappUrl)}" target="_blank" rel="noreferrer noopener"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i> WhatsApp</a><a class="share-chip" href="${text(share.facebookUrl)}" target="_blank" rel="noreferrer noopener"><i class="fa-brands fa-facebook-f" aria-hidden="true"></i> Facebook</a><button class="share-chip" type="button" data-copy-product-link="${text(item.id)}"><i class="fa-solid fa-link" aria-hidden="true"></i> Copiar link</button></div><p class="form-status" id="product-share-status" role="status"></p></div><section class="product-detail-copy"><h2>Sobre esta peça</h2><p>${text(body)}</p></section></div></div>`;
+  shell.querySelectorAll('[data-product-image]').forEach((button) => {
+    button.addEventListener('click', () => {
+      shell
+        .querySelectorAll('.product-detail-thumb')
+        .forEach((thumb) => thumb.classList.toggle('is-active', thumb === button));
+      const hero = shell.querySelector('.product-detail-hero img');
+      if (hero) hero.src = button.dataset.productImage || '';
+    });
+  });
+  shell.querySelector('[data-detail-add-to-cart]')?.addEventListener('click', () => {
+    openQuantityDialog(item.id);
+  });
+  shell.querySelector('[data-product-share]')?.addEventListener('click', async () => {
+    try {
+      await navigator.share({ title: item.name, text: summary, url: share.url });
+      setStatus('#product-share-status', 'Link compartilhado com sucesso.', 'success');
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        setStatus(
+          '#product-share-status',
+          'Não foi possível abrir o compartilhamento nativo.',
+          'error'
+        );
+      }
+    }
+  });
+  shell.querySelector('[data-copy-product-link]')?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(share.url);
+      setStatus('#product-share-status', 'Link copiado para a área de transferência.', 'success');
+    } catch {
+      setStatus('#product-share-status', 'Não foi possível copiar o link.', 'error');
+    }
+  });
+}
+
+async function renderProductPage() {
+  const shell = $('#product-page-shell');
+  if (!shell) return;
+  const productId = currentProductId();
+  if (!productId) {
+    shell.innerHTML = '<p class="page-lead">Produto não encontrado.</p>';
+    return;
+  }
+  const requestKey = ++state.productPageRequestKey;
+  shell.innerHTML = '<p class="page-lead">Carregando produto...</p>';
+  try {
+    const product = await loadProductDetail(productId);
+    if (state.productPageRequestKey !== requestKey || currentProductId() !== productId) return;
+    if (!product) throw new Error('Produto não encontrado.');
+    renderProductPageContent(product);
+  } catch (error) {
+    if (state.productPageRequestKey !== requestKey || currentProductId() !== productId) return;
+    shell.innerHTML = `<div class="info-section"><h1>Produto indisponível</h1><p class="page-lead">${text(error.message || 'Não foi possível carregar este produto agora.')}</p></div>`;
+  }
 }
 
 function renderCart() {
@@ -720,6 +871,9 @@ function renderStorePage() {
   renderCart();
   renderAccountPage();
   renderShippingPage();
+  if (page === 'product') {
+    renderProductPage().catch(console.error);
+  }
 }
 
 function bindSpaLinks() {
@@ -729,8 +883,10 @@ function bindSpaLinks() {
       const url = new URL(href, window.location.origin);
       if (url.origin !== window.location.origin) return;
       event.preventDefault();
-      navigateTo(pageForPathname(url.pathname), {
+      const page = pageForPathname(url.pathname);
+      navigateTo(page, {
         hash: url.hash.replace(/^#/, ''),
+        productId: page === 'product' ? productIdFromPathname(url.pathname) : '',
       });
     })
   );

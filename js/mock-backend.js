@@ -102,6 +102,12 @@ export function createMockBackend({ getToken, loadCatalog }) {
         pagination: { page, limit, total, totalPages },
       };
     },
+    async getProduct(productId) {
+      const products = flattenCatalogProducts(await loadCatalog());
+      const product = products.find((item) => item.id === productId);
+      if (!product) throw apiError('PRODUCT_NOT_FOUND', 'Produto não encontrado.', 404);
+      return { product };
+    },
     async register(payload) {
       const db = readDb();
       const email = normalizeEmail(payload.email);
