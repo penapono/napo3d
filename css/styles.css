@@ -892,6 +892,10 @@ a {
   display: block;
   font-size: 10px;
 }
+.tier-production-time {
+  color: var(--ink);
+  font-weight: 700;
+}
 .quote-button {
   background: var(--accent);
   border: 0;

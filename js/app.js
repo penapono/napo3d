@@ -106,6 +106,15 @@ function formatDuration(minutes) {
     .join(' ');
 }
 
+function formatTierProductionTime(minutes) {
+  const total = Math.max(0, Math.round(minutes));
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  if (!hours) return `> ${mins}min`;
+  if (!mins) return `> ${hours}h`;
+  return `> ${hours}h ${mins}min`;
+}
+
 function loadCart() {
   try {
     const cart = JSON.parse(localStorage.getItem('napo3d-cart') || '[]');
@@ -274,7 +283,7 @@ function card(item) {
   ]
     .map(
       (tier) =>
-        `<div class="tier-price"><span>${tier.label}</span><strong>${money(unitPriceFromWeight(weightInGrams(option), tier.quantity))}</strong><small>por peça</small></div>`
+        `<div class="tier-price"><span>${tier.label}</span><strong>${money(unitPriceFromWeight(weightInGrams(option), tier.quantity))}</strong><small class="tier-production-time">${text(formatTierProductionTime(lineProductionMinutes(item, tier.quantity, option)))}</small><small>por peça</small></div>`
     )
     .join('');
   return `<article class="product-card"><div class="product-image">${image(imageSource.primary, item.name, imageSource.fallback)}<span class="product-tag">${text(item.category)}</span></div><div class="product-info"><h3>${text(item.name)}</h3>${ratingMarkup(option)}<p class="variant-name">${text(description)}</p><div class="tier-prices" aria-label="Preços por quantidade">${tierPrices}</div>${cardAction(item, option)}</div></article>`;
