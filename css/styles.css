@@ -833,6 +833,11 @@ a {
   font-size: 13px;
   gap: 6px;
 }
+.account-page-form label[hidden],
+.shipping-form label[hidden],
+[hidden] {
+  display: none !important;
+}
 .account-page-form input,
 .shipping-form input {
   background: var(--surface);
