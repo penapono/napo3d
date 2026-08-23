@@ -11,6 +11,7 @@ import {
   sortProducts,
   validateAddressInput
 } from '../shared/contract.js';
+import { processPendingEmails, resolveMailerConfig } from './mailer.js';
 import { createPostgresStore, DEFAULT_DATABASE_URL } from './store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -28,6 +29,7 @@ export function createApp(options = {}) {
   });
   const catalogPath = path.join(rootDir, 'data', 'models.json');
   const corsOrigins = resolveCorsOrigins(options.corsOrigins);
+  const mailerConfig = options.mailerConfig || resolveMailerConfig();
   const rateLimits = new Map();
 
   const catalogState = {
@@ -223,7 +225,7 @@ export function createApp(options = {}) {
       {
         id: crypto.randomUUID(),
         type: 'internal_order',
-        to: 'pedro.gnaponoceno@gmail.com',
+        to: mailerConfig.orderRecipient,
         orderId: order.id,
         createdAt: new Date().toISOString()
       },
@@ -596,6 +598,10 @@ export function createApp(options = {}) {
           return nextStore;
         });
 
+        processPendingEmails(store, { config: mailerConfig }).catch((error) => {
+          console.error('[mailer] send failed', error);
+        });
+
         writeJson(response, 201, responsePayload);
       } catch (error) {
         if (error.code === 'ADDRESS_REQUIRED') {
@@ -633,7 +639,7 @@ export function createApp(options = {}) {
     errorResponse(request, response, 404, 'NOT_FOUND', 'Rota não encontrada.');
   }
 
-  const server = createServer(async (request, response) => {
+  async function handleRequest(request, response) {
     const url = new URL(request.url || '/', 'http://localhost');
     try {
       applyDefaultHeaders(request, response);
@@ -670,7 +676,9 @@ export function createApp(options = {}) {
       console.error('[server] unexpected error', error);
       errorResponse(request, response, 500, 'INTERNAL_ERROR', 'Erro interno do servidor.');
     }
-  });
+  }
+
+  const server = createServer(handleRequest);
 
   server.inject = async function inject({ method = 'GET', path: requestPath = '/', headers = {}, body = null } = {}) {
     const normalizedHeaders = Object.fromEntries(
@@ -709,11 +717,7 @@ export function createApp(options = {}) {
       }
     };
 
-    const url = new URL(request.url || '/', 'http://localhost');
-    applyDefaultHeaders(request, response);
-    if (request.method === 'OPTIONS') writeNoContent(response);
-    else if (url.pathname.startsWith('/api/')) await handleApi(request, response, url.pathname);
-    else writeText(response, 404, 'napo3d API server: use /api/*');
+    await handleRequest(request, response);
 
     const text = Buffer.concat(responseChunks).toString('utf8');
     let json = null;
@@ -726,6 +730,12 @@ export function createApp(options = {}) {
 
   server.start = async function start(port = Number(process.env.PORT || 3001), host = process.env.HOST || '127.0.0.1') {
     await store.init?.();
+    const mailerWorker = setInterval(() => {
+      processPendingEmails(store, { config: mailerConfig }).catch((error) => {
+        console.error('[mailer] worker error', error);
+      });
+    }, 30_000);
+    mailerWorker.unref?.();
     return new Promise((resolve) => {
       server.listen(port, host, () => resolve(server));
     });

@@ -7,6 +7,12 @@ RUN corepack enable && pnpm install --frozen-lockfile --prod
 
 COPY . .
 
+RUN addgroup -S napo3d \
+    && adduser -S napo3d -G napo3d \
+    && chown -R napo3d:napo3d /app
+
+USER napo3d:napo3d
+
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3001

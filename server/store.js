@@ -94,24 +94,41 @@ CREATE TABLE IF NOT EXISTS emails (
   order_id text NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   created_at timestamptz NOT NULL
 );
+
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS sent_at timestamptz;
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0;
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS last_error text;
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS processing_started_at timestamptz;
 `;
 
 export function createMemoryStore(initialState = EMPTY_STORE) {
   let state = structuredClone({ ...EMPTY_STORE, ...initialState });
+  let pending = Promise.resolve();
+
+  function runExclusive(task) {
+    const result = pending.then(task, task);
+    pending = result.then(() => undefined, () => undefined);
+    return result;
+  }
 
   return {
     async init() {},
     async read() {
+      await pending;
       return structuredClone(state);
     },
     async write(nextStore) {
-      state = structuredClone(withStoreDefaults(nextStore));
-      return structuredClone(state);
+      return runExclusive(async () => {
+        state = structuredClone(withStoreDefaults(nextStore));
+        return structuredClone(state);
+      });
     },
     async update(mutator) {
-      const nextStore = await mutator(structuredClone(state));
-      state = structuredClone(withStoreDefaults(nextStore));
-      return structuredClone(state);
+      return runExclusive(async () => {
+        const nextStore = await mutator(structuredClone(state));
+        state = structuredClone(withStoreDefaults(nextStore));
+        return structuredClone(state);
+      });
     },
     async close() {}
   };
@@ -288,7 +305,11 @@ async function readStore(client) {
       type: row.type,
       to: row.recipient_email,
       orderId: row.order_id,
-      createdAt: asIsoString(row.created_at)
+      createdAt: asIsoString(row.created_at),
+      sentAt: row.sent_at ? asIsoString(row.sent_at) : undefined,
+      attempts: Number(row.attempts || 0),
+      lastError: undefinedIfNull(row.last_error),
+      processingStartedAt: row.processing_started_at ? asIsoString(row.processing_started_at) : undefined
     }))
   };
 }
@@ -414,8 +435,19 @@ async function replaceStore(client, nextStore) {
 
   for (const email of nextStore.emails) {
     await client.query(
-      'INSERT INTO emails (id, type, recipient_email, order_id, created_at) VALUES ($1, $2, $3, $4, $5)',
-      [email.id, email.type, email.to, email.orderId, asTimestamp(email.createdAt)]
+      `INSERT INTO emails (id, type, recipient_email, order_id, created_at, sent_at, attempts, last_error, processing_started_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        email.id,
+        email.type,
+        email.to,
+        email.orderId,
+        asTimestamp(email.createdAt),
+        email.sentAt ? asTimestamp(email.sentAt) : null,
+        Number(email.attempts || 0),
+        nullIfEmpty(email.lastError),
+        email.processingStartedAt ? asTimestamp(email.processingStartedAt) : null
+      ]
     );
   }
 }

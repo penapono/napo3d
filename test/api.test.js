@@ -187,3 +187,174 @@ test('api server does not serve frontend assets and exposes CORS for separate fr
   assert.equal(preflight.response.headers['Access-Control-Allow-Origin'], 'http://localhost:3000');
   assert.match(preflight.response.headers['Access-Control-Allow-Methods'], /GET/);
 });
+
+test('users cannot read or modify another user\'s addresses', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+
+  const userA = await api(app, '/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Ana', email: 'ana@example.com', password: '12345678' })
+  });
+  const userB = await api(app, '/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Bruno', email: 'bruno@example.com', password: '12345678' })
+  });
+
+  const addressA = await api(app, '/api/me/addresses', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${userA.json.accessToken}` },
+    body: JSON.stringify({
+      recipientName: 'Ana',
+      postalCode: '13010111',
+      street: 'Rua A',
+      number: '1',
+      city: 'Campinas',
+      state: 'SP'
+    })
+  });
+
+  const readAsB = await api(app, '/api/me/addresses', {
+    headers: { Authorization: `Bearer ${userB.json.accessToken}` }
+  });
+  assert.equal(readAsB.json.addresses.length, 0);
+
+  const patchAsB = await api(app, `/api/me/addresses/${addressA.json.address.id}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${userB.json.accessToken}` },
+    body: JSON.stringify({ city: 'Hacked' })
+  });
+  assert.equal(patchAsB.response.status, 404);
+
+  const deleteAsB = await api(app, `/api/me/addresses/${addressA.json.address.id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${userB.json.accessToken}` }
+  });
+  assert.equal(deleteAsB.response.status, 404);
+});
+
+test('users cannot read another user\'s orders', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+
+  const userA = await api(app, '/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Ana', email: 'ana2@example.com', password: '12345678' })
+  });
+  const address = await api(app, '/api/me/addresses', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${userA.json.accessToken}` },
+    body: JSON.stringify({
+      recipientName: 'Ana',
+      postalCode: '13010111',
+      street: 'Rua A',
+      number: '1',
+      city: 'Campinas',
+      state: 'SP'
+    })
+  });
+  const order = await api(app, '/api/orders', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${userA.json.accessToken}`, 'Idempotency-Key': 'order-a-1' },
+    body: JSON.stringify({
+      items: [{ productId: 'p3-card', optionName: 'Business Card Holder — Japandi/Ribbed', quantity: 12 }],
+      addressId: address.json.address.id,
+      customer: { name: 'Ana', email: 'ana2@example.com' }
+    })
+  });
+
+  const userB = await api(app, '/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Bruno', email: 'bruno2@example.com', password: '12345678' })
+  });
+  const readAsB = await api(app, `/api/me/orders/${order.json.order.id}`, {
+    headers: { Authorization: `Bearer ${userB.json.accessToken}` }
+  });
+  assert.equal(readAsB.response.status, 404);
+
+  const listAsB = await api(app, '/api/me/orders', {
+    headers: { Authorization: `Bearer ${userB.json.accessToken}` }
+  });
+  assert.equal(listAsB.json.orders.length, 0);
+});
+
+test('first address becomes default, and setting a new default clears the previous one', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+
+  const user = await api(app, '/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Carla', email: 'carla@example.com', password: '12345678' })
+  });
+  const auth = { Authorization: `Bearer ${user.json.accessToken}` };
+
+  const first = await api(app, '/api/me/addresses', {
+    method: 'POST',
+    headers: auth,
+    body: JSON.stringify({
+      recipientName: 'Carla',
+      postalCode: '13010111',
+      street: 'Rua A',
+      number: '1',
+      city: 'Campinas',
+      state: 'SP'
+    })
+  });
+  assert.equal(first.json.address.isDefault, true);
+
+  const second = await api(app, '/api/me/addresses', {
+    method: 'POST',
+    headers: auth,
+    body: JSON.stringify({
+      recipientName: 'Carla',
+      postalCode: '13010222',
+      street: 'Rua B',
+      number: '2',
+      city: 'Campinas',
+      state: 'SP'
+    })
+  });
+  assert.equal(second.json.address.isDefault, false);
+
+  const setDefault = await api(app, `/api/me/addresses/${second.json.address.id}/default`, {
+    method: 'POST',
+    headers: auth
+  });
+  assert.equal(setDefault.json.address.isDefault, true);
+
+  const list = await api(app, '/api/me/addresses', { headers: auth });
+  const firstAfter = list.json.addresses.find((entry) => entry.id === first.json.address.id);
+  assert.equal(firstAfter.isDefault, false);
+});
+
+test('GET /api/products filters by category and paginates', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+
+  const page1 = await api(app, '/api/products?limit=2&page=1');
+  assert.equal(page1.response.status, 200);
+  assert.equal(page1.json.items.length, 2);
+  assert.equal(page1.json.pagination.page, 1);
+
+  const filtered = await api(app, `/api/products?category=${encodeURIComponent('Identidade visual')}`);
+  assert.ok(filtered.json.items.every((item) => item.category === 'Identidade visual'));
+});
+
+test('register enforces a rate limit per IP', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+
+  let lastStatus = 200;
+  for (let index = 0; index < 11; index += 1) {
+    const result = await api(app, '/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: `User ${index}`,
+        email: `user${index}@example.com`,
+        password: '12345678'
+      })
+    });
+    lastStatus = result.response.status;
+  }
+  assert.equal(lastStatus, 429);
+});

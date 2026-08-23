@@ -5,6 +5,10 @@ x-api-environment: &api-environment
   HOST: 0.0.0.0
   PORT: "3001"
   CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+  EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
+  RESEND_API_KEY: ${RESEND_API_KEY:-}
+  FROM_EMAIL: ${FROM_EMAIL:-}
+  ORDER_RECIPIENT: ${ORDER_RECIPIENT:-pedro.gnaponoceno@gmail.com}
 
 services:
   db:

@@ -1,27 +1,16 @@
 name: napo3d-production
 
 x-api-environment: &api-environment
-  DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  DATABASE_URL: ${DATABASE_URL}
   HOST: 0.0.0.0
   PORT: "3001"
   CORS_ORIGINS: ${CORS_ORIGINS}
+  EMAIL_PROVIDER: ${EMAIL_PROVIDER}
+  RESEND_API_KEY: ${RESEND_API_KEY}
+  FROM_EMAIL: ${FROM_EMAIL}
+  ORDER_RECIPIENT: ${ORDER_RECIPIENT}
 
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    volumes:
-      - /srv/napo3d-data/postgres:/var/lib/postgresql/data
-
   api:
     build:
       context: .
@@ -29,9 +18,8 @@ services:
     restart: unless-stopped
     environment:
       <<: *api-environment
-    depends_on:
-      db:
-        condition: service_healthy
+    networks:
+      - corus
     ports:
       - "127.0.0.1:3501:3001"
 
@@ -45,3 +33,8 @@ services:
         condition: service_started
     ports:
       - "127.0.0.1:3500:3000"
+
+networks:
+  corus:
+    external: true
+    name: corus
