@@ -40,13 +40,20 @@ async function api(app, pathname, options = {}) {
   };
 }
 
+function sessionHeaders(result) {
+  const setCookie = result.response.headers['Set-Cookie'] || result.response.headers['set-cookie'];
+  assert.ok(setCookie, 'Expected Set-Cookie header in auth response');
+  const raw = Array.isArray(setCookie) ? setCookie[0] : String(setCookie);
+  return { Cookie: raw.split(';')[0] };
+}
+
 async function loginAsNewAdmin(app, email) {
   const register = await api(app, '/api/auth/register', {
     method: 'POST',
     body: JSON.stringify({ name: 'Admin', email, password: '12345678' }),
   });
   await app.promoteToAdmin(email);
-  return { Authorization: `Bearer ${register.json.accessToken}` };
+  return sessionHeaders(register);
 }
 
 test('buildQuote applies the correct pricing tiers', async () => {
@@ -86,9 +93,10 @@ test('register, login and fetch me', async (t) => {
   });
   assert.equal(register.response.status, 201);
   assert.equal(register.json.user.email, 'pedro@example.com');
+  const registerSession = sessionHeaders(register);
 
   const me = await api(app, '/api/me', {
-    headers: { Authorization: `Bearer ${register.json.accessToken}` },
+    headers: registerSession,
   });
   assert.equal(me.response.status, 200);
   assert.equal(me.json.user.name, 'Pedro');
@@ -102,7 +110,7 @@ test('register, login and fetch me', async (t) => {
     }),
   });
   assert.equal(login.response.status, 200);
-  assert.ok(login.json.accessToken);
+  assert.ok(login.response.headers['Set-Cookie'] || login.response.headers['set-cookie']);
   assert.equal(login.json.user.role, 'customer');
 });
 
@@ -120,9 +128,10 @@ test('new users always register as customer, never admin', async (t) => {
     }),
   });
   assert.equal(register.json.user.role, 'customer');
+  const auth = sessionHeaders(register);
 
   const me = await api(app, '/api/me', {
-    headers: { Authorization: `Bearer ${register.json.accessToken}` },
+    headers: auth,
   });
   assert.equal(me.json.user.role, 'customer');
 });
@@ -138,8 +147,9 @@ test('admin-only routes reject customers and anonymous requests', async (t) => {
     method: 'POST',
     body: JSON.stringify({ name: 'Bruno', email: 'bruno-role@example.com', password: '12345678' }),
   });
+  const asCustomerAuth = sessionHeaders(register);
   const asCustomer = await api(app, '/api/admin/users', {
-    headers: { Authorization: `Bearer ${register.json.accessToken}` },
+    headers: asCustomerAuth,
   });
   assert.equal(asCustomer.response.status, 403);
   assert.equal(asCustomer.json.error.code, 'FORBIDDEN');
@@ -154,9 +164,10 @@ test('an admin user can reach admin-only routes', async (t) => {
     body: JSON.stringify({ name: 'Carla', email: 'carla-role@example.com', password: '12345678' }),
   });
   await app.promoteToAdmin('carla-role@example.com');
+  const asAdminAuth = sessionHeaders(register);
 
   const asAdmin = await api(app, '/api/admin/users', {
-    headers: { Authorization: `Bearer ${register.json.accessToken}` },
+    headers: asAdminAuth,
   });
   assert.equal(asAdmin.response.status, 200);
 });
@@ -183,10 +194,11 @@ test('orders require auth and address', async (t) => {
       password: '12345678',
     }),
   });
+  const auth = sessionHeaders(register);
 
   const noAddressOrder = await api(app, '/api/orders', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${register.json.accessToken}`, 'Idempotency-Key': 'abc-1' },
+    headers: { ...auth, 'Idempotency-Key': 'abc-1' },
     body: JSON.stringify({
       items: [
         { productId: 'p3-card', optionName: 'Business Card Holder — Japandi/Ribbed', quantity: 12 },
@@ -210,11 +222,11 @@ test('idempotency returns the same order without duplicating it', async (t) => {
       password: '12345678',
     }),
   });
-  const token = register.json.accessToken;
+  const auth = sessionHeaders(register);
 
   const address = await api(app, '/api/me/addresses', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
+    headers: auth,
     body: JSON.stringify({
       recipientName: 'Pedro',
       postalCode: '13010111',
@@ -235,12 +247,12 @@ test('idempotency returns the same order without duplicating it', async (t) => {
 
   const first = await api(app, '/api/orders', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': 'repeat-me' },
+    headers: { ...auth, 'Idempotency-Key': 'repeat-me' },
     body: JSON.stringify(payload),
   });
   const second = await api(app, '/api/orders', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': 'repeat-me' },
+    headers: { ...auth, 'Idempotency-Key': 'repeat-me' },
     body: JSON.stringify(payload),
   });
 
@@ -249,7 +261,7 @@ test('idempotency returns the same order without duplicating it', async (t) => {
   assert.equal(first.json.order.id, second.json.order.id);
 
   const orders = await api(app, '/api/me/orders', {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: auth,
   });
   assert.equal(orders.response.status, 200);
   assert.equal(orders.json.orders.length, 1);
@@ -290,7 +302,7 @@ test("users cannot read or modify another user's addresses", async (t) => {
 
   const addressA = await api(app, '/api/me/addresses', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${userA.json.accessToken}` },
+    headers: sessionHeaders(userA),
     body: JSON.stringify({
       recipientName: 'Ana',
       postalCode: '13010111',
@@ -302,20 +314,20 @@ test("users cannot read or modify another user's addresses", async (t) => {
   });
 
   const readAsB = await api(app, '/api/me/addresses', {
-    headers: { Authorization: `Bearer ${userB.json.accessToken}` },
+    headers: sessionHeaders(userB),
   });
   assert.equal(readAsB.json.addresses.length, 0);
 
   const patchAsB = await api(app, `/api/me/addresses/${addressA.json.address.id}`, {
     method: 'PATCH',
-    headers: { Authorization: `Bearer ${userB.json.accessToken}` },
+    headers: sessionHeaders(userB),
     body: JSON.stringify({ city: 'Hacked' }),
   });
   assert.equal(patchAsB.response.status, 404);
 
   const deleteAsB = await api(app, `/api/me/addresses/${addressA.json.address.id}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${userB.json.accessToken}` },
+    headers: sessionHeaders(userB),
   });
   assert.equal(deleteAsB.response.status, 404);
 });
@@ -330,7 +342,7 @@ test("users cannot read another user's orders", async (t) => {
   });
   const address = await api(app, '/api/me/addresses', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${userA.json.accessToken}` },
+    headers: sessionHeaders(userA),
     body: JSON.stringify({
       recipientName: 'Ana',
       postalCode: '13010111',
@@ -342,7 +354,7 @@ test("users cannot read another user's orders", async (t) => {
   });
   const order = await api(app, '/api/orders', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${userA.json.accessToken}`, 'Idempotency-Key': 'order-a-1' },
+    headers: { ...sessionHeaders(userA), 'Idempotency-Key': 'order-a-1' },
     body: JSON.stringify({
       items: [
         { productId: 'p3-card', optionName: 'Business Card Holder — Japandi/Ribbed', quantity: 12 },
@@ -357,12 +369,12 @@ test("users cannot read another user's orders", async (t) => {
     body: JSON.stringify({ name: 'Bruno', email: 'bruno2@example.com', password: '12345678' }),
   });
   const readAsB = await api(app, `/api/me/orders/${order.json.order.id}`, {
-    headers: { Authorization: `Bearer ${userB.json.accessToken}` },
+    headers: sessionHeaders(userB),
   });
   assert.equal(readAsB.response.status, 404);
 
   const listAsB = await api(app, '/api/me/orders', {
-    headers: { Authorization: `Bearer ${userB.json.accessToken}` },
+    headers: sessionHeaders(userB),
   });
   assert.equal(listAsB.json.orders.length, 0);
 });
@@ -375,7 +387,7 @@ test('first address becomes default, and setting a new default clears the previo
     method: 'POST',
     body: JSON.stringify({ name: 'Carla', email: 'carla@example.com', password: '12345678' }),
   });
-  const auth = { Authorization: `Bearer ${user.json.accessToken}` };
+  const auth = sessionHeaders(user);
 
   const first = await api(app, '/api/me/addresses', {
     method: 'POST',
@@ -605,7 +617,7 @@ test('a customer cannot create, update, or delete products', async (t) => {
       password: '12345678',
     }),
   });
-  const customer = { Authorization: `Bearer ${register.json.accessToken}` };
+  const customer = sessionHeaders(register);
 
   const create = await api(app, '/api/admin/products', {
     method: 'POST',
@@ -1061,7 +1073,7 @@ test('admin can list every order across all customers and view one in detail', a
     method: 'POST',
     body: JSON.stringify({ name: 'Dora', email: 'dora-orders@example.com', password: '12345678' }),
   });
-  const customerAuth = { Authorization: `Bearer ${customer.json.accessToken}` };
+  const customerAuth = sessionHeaders(customer);
   const address = await api(app, '/api/me/addresses', {
     method: 'POST',
     headers: customerAuth,
@@ -1105,7 +1117,7 @@ test('admin can update an order status but not to an invalid value', async (t) =
     method: 'POST',
     body: JSON.stringify({ name: 'Elis', email: 'elis-orders@example.com', password: '12345678' }),
   });
-  const customerAuth = { Authorization: `Bearer ${customer.json.accessToken}` };
+  const customerAuth = sessionHeaders(customer);
   const address = await api(app, '/api/me/addresses', {
     method: 'POST',
     headers: customerAuth,
@@ -1163,7 +1175,7 @@ test('a customer cannot list all orders or change order status', async (t) => {
       password: '12345678',
     }),
   });
-  const customer = { Authorization: `Bearer ${register.json.accessToken}` };
+  const customer = sessionHeaders(register);
 
   const list = await api(app, '/api/admin/orders', { headers: customer });
   assert.equal(list.response.status, 403);
@@ -1177,9 +1189,10 @@ test('admin can list users and see one user detail with addresses', async (t) =>
     method: 'POST',
     body: JSON.stringify({ name: 'Gil', email: 'gil-users@example.com', password: '12345678' }),
   });
+  const customerAuth = sessionHeaders(customer);
   await api(app, '/api/me/addresses', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${customer.json.accessToken}` },
+    headers: customerAuth,
     body: JSON.stringify({
       recipientName: 'Gil',
       postalCode: '13010111',
@@ -1219,7 +1232,7 @@ test('admin can promote a user to admin, but cannot change their own role', asyn
     body: JSON.stringify({ name: 'Admin', email: adminEmail, password: '12345678' }),
   });
   await app.promoteToAdmin(adminEmail);
-  const admin = { Authorization: `Bearer ${adminRegister.json.accessToken}` };
+  const admin = sessionHeaders(adminRegister);
 
   const promote = await api(app, `/api/admin/users/${customer.json.user.id}`, {
     method: 'PATCH',
@@ -1246,7 +1259,7 @@ test('deleting a user cannot target yourself, and preserves the deleted user ord
     method: 'POST',
     body: JSON.stringify({ name: 'Ines', email: 'ines-users@example.com', password: '12345678' }),
   });
-  const customerAuth = { Authorization: `Bearer ${customer.json.accessToken}` };
+  const customerAuth = sessionHeaders(customer);
   const address = await api(app, '/api/me/addresses', {
     method: 'POST',
     headers: customerAuth,

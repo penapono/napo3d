@@ -539,7 +539,7 @@ async function init() {
       'Você precisa entrar com uma conta de administrador. Redirecionando...'
     );
     setTimeout(() => {
-      window.location.href = './index.html?page=account';
+      window.location.href = './minha-conta';
     }, 800);
     return;
   }

@@ -21,13 +21,13 @@
   <body>
     <header class="site-header">
       <div class="container nav-wrap">
-        <a class="brand" href="#top" aria-label="Voltar ao início">
+        <a class="brand" data-spa-link href="/" aria-label="Voltar ao início">
           <span class="brand-mark">3D</span>
           <span>Não há nada que a gente não resolva</span>
         </a>
         <nav aria-label="Navegação principal">
-          <a href="#catalogo">Catálogo</a>
-          <a href="#como-funciona">Como funciona</a>
+          <a data-spa-link href="/#catalogo">Catálogo</a>
+          <a data-spa-link href="/#como-funciona">Como funciona</a>
           <a href="./admin.html" id="admin-open" hidden>Admin</a>
           <button class="nav-account" id="account-open" type="button">Minha conta</button>
           <button class="nav-cart" id="cart-open" type="button" aria-label="Abrir carrinho">
@@ -47,7 +47,7 @@
               Objetos impressos em 3D para organizar, decorar e deixar a rotina mais gostosa.
               Escolha seu favorito e peça uma cotação.
             </p>
-            <a class="button button-primary" href="#catalogo"
+            <a class="button button-primary" data-spa-link href="/#catalogo"
               >Ver peças disponíveis
               <i class="fa-solid fa-arrow-down icon-inline" aria-hidden="true"></i
             ></a>
@@ -223,7 +223,8 @@
       <a
         class="floating-top-button"
         id="floating-top-button"
-        href="#top"
+        data-spa-link
+        href="/"
         aria-label="Voltar ao topo"
         title="Voltar ao topo"
         ><i class="fa-solid fa-arrow-up" aria-hidden="true"></i
@@ -232,7 +233,7 @@
 
     <section class="store-page" id="cart-page" hidden>
       <div class="container store-page-inner">
-        <a class="back-link" href="./index.html"
+        <a class="back-link" data-spa-link href="/"
           ><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Continuar comprando</a
         >
         <span class="eyebrow">Seu pedido</span>

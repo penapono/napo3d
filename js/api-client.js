@@ -1,19 +1,20 @@
 import { createMockBackend } from './mock-backend.js';
 
-const TOKEN_KEY = 'napo3d-access-token';
+const MOCK_TOKEN_KEY = 'napo3d-mock-access-token';
+const LEGACY_LIVE_TOKEN_KEY = 'napo3d-access-token';
 const MODE_KEY = 'napo3d-backend-mode';
 const API_BASE_KEY = 'napo3d-api-base-url';
 
-let accessToken = localStorage.getItem(TOKEN_KEY) || '';
+let mockAccessToken = localStorage.getItem(MOCK_TOKEN_KEY) || '';
 let mode = 'mock';
 let implementation = null;
 let initPromise = null;
 let apiBaseUrl = '';
 
 function persistToken(token) {
-  accessToken = token || '';
-  if (accessToken) localStorage.setItem(TOKEN_KEY, accessToken);
-  else localStorage.removeItem(TOKEN_KEY);
+  mockAccessToken = token || '';
+  if (mockAccessToken) localStorage.setItem(MOCK_TOKEN_KEY, mockAccessToken);
+  else localStorage.removeItem(MOCK_TOKEN_KEY);
 }
 
 function normalizeBaseUrl(value) {
@@ -38,10 +39,10 @@ function queryString(params = {}) {
 async function request(pathname, options = {}) {
   const response = await fetch(`${apiBaseUrl}${pathname}`, {
     ...options,
+    credentials: 'include',
     headers: {
       Accept: 'application/json',
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...(options.headers || {}),
     },
   });
@@ -93,7 +94,7 @@ function liveImplementation() {
 function buildImplementation(selectedMode) {
   if (selectedMode === 'live') return liveImplementation();
   return createMockBackend({
-    getToken: () => accessToken,
+    getToken: () => mockAccessToken,
     loadCatalog,
   });
 }
@@ -103,13 +104,18 @@ function configuredApiBaseCandidates() {
   const explicitGlobal = globalThis.NAPO3D_API_BASE_URL || '';
   const stored = localStorage.getItem(API_BASE_KEY) || '';
   const sameOrigin = location.origin && location.origin !== 'null' ? location.origin : '';
+  const localApiBase =
+    location.hostname && ['localhost', '127.0.0.1'].includes(location.hostname)
+      ? `${location.protocol}//${location.hostname}:3001`
+      : '';
   const candidates = [
     explicitGlobal,
     explicitMeta,
     stored,
     sameOrigin,
-    'http://localhost:3001',
+    localApiBase,
     'http://127.0.0.1:3001',
+    'http://localhost:3001',
   ]
     .map(normalizeBaseUrl)
     .filter(Boolean);
@@ -149,6 +155,9 @@ async function ensureInit() {
       mode = liveCandidate ? 'live' : preferred || 'mock';
       implementation = buildImplementation(mode);
       if (liveCandidate) localStorage.setItem(API_BASE_KEY, liveCandidate);
+      if (liveCandidate) {
+        localStorage.removeItem(LEGACY_LIVE_TOKEN_KEY);
+      }
       localStorage.setItem(MODE_KEY, mode);
       return mode;
     })();
@@ -177,7 +186,7 @@ async function invoke(method, ...args) {
 function withSession(method) {
   return async (payload) => {
     const result = await invoke(method, payload);
-    if (result?.accessToken) persistToken(result.accessToken);
+    if (mode === 'mock' && result?.accessToken) persistToken(result.accessToken);
     return result;
   };
 }
@@ -193,12 +202,12 @@ export const apiClient = {
     persistToken('');
   },
   async getMe() {
-    if (!accessToken) return { user: null };
+    if (mode === 'mock' && !mockAccessToken) return { user: null };
     try {
       return await invoke('getMe');
     } catch (error) {
       if (error.status === 401) {
-        persistToken('');
+        if (mode === 'mock') persistToken('');
         return { user: null };
       }
       throw error;

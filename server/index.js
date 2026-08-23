@@ -39,6 +39,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 
 const DEFAULT_CORS_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const SESSION_COOKIE_NAME = 'napo3d_session';
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14;
+const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+const MAX_ACTIVE_SESSIONS_PER_USER = 8;
 
 export function createApp(options = {}) {
   const rootDir = options.rootDir || projectRoot;
@@ -591,17 +595,16 @@ export function createApp(options = {}) {
   }
 
   function applyCors(request, response) {
-    const origin = String(request.headers.origin || '').trim();
+    const origin = allowedOriginForRequest(request);
     if (!origin) return;
     if (corsOrigins.has('*')) {
       response.setHeader('Access-Control-Allow-Origin', '*');
       response.setHeader('Vary', 'Origin');
       return;
     }
-    if (corsOrigins.has(origin)) {
-      response.setHeader('Access-Control-Allow-Origin', origin);
-      response.setHeader('Vary', 'Origin');
-    }
+    response.setHeader('Access-Control-Allow-Origin', origin);
+    response.setHeader('Access-Control-Allow-Credentials', 'true');
+    response.setHeader('Vary', 'Origin');
   }
 
   function applyDefaultHeaders(request, response) {
@@ -611,11 +614,22 @@ export function createApp(options = {}) {
       'Authorization, Content-Type, Idempotency-Key'
     );
     response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    response.setHeader('Referrer-Policy', 'same-origin');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('X-Frame-Options', 'DENY');
+    response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   }
 
   async function parseBody(request) {
     const chunks = [];
+    let totalBytes = 0;
     for await (const chunk of request) {
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_REQUEST_BODY_BYTES) {
+        const error = new Error('Corpo da requisição excede o limite permitido.');
+        error.code = 'PAYLOAD_TOO_LARGE';
+        throw error;
+      }
       chunks.push(chunk);
     }
     if (!chunks.length) return {};
@@ -656,26 +670,108 @@ export function createApp(options = {}) {
     return crypto.randomUUID();
   }
 
+  function isSessionExpired(session) {
+    const createdAt = Date.parse(session?.createdAt || '');
+    if (!Number.isFinite(createdAt)) return true;
+    return Date.now() - createdAt > SESSION_TTL_MS;
+  }
+
+  function pruneSessions(sessions = []) {
+    return sessions
+      .filter((session) => !isSessionExpired(session))
+      .sort((left, right) => Date.parse(right.createdAt || '') - Date.parse(left.createdAt || ''));
+  }
+
+  function parseCookies(request) {
+    const source = String(request.headers.cookie || '');
+    if (!source) return new Map();
+    return new Map(
+      source
+        .split(';')
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .map((part) => {
+          const separator = part.indexOf('=');
+          const key = separator >= 0 ? part.slice(0, separator).trim() : part.trim();
+          const value = separator >= 0 ? part.slice(separator + 1).trim() : '';
+          return [key, decodeURIComponent(value)];
+        })
+    );
+  }
+
+  function isSecureRequest(request) {
+    return (
+      String(request.headers['x-forwarded-proto'] || '').trim() === 'https' ||
+      String(request.headers.origin || '').startsWith('https://')
+    );
+  }
+
+  function buildSessionCookie(token, request) {
+    return [
+      `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
+      'Path=/',
+      'HttpOnly',
+      'SameSite=Lax',
+      `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+      isSecureRequest(request) ? 'Secure' : '',
+    ]
+      .filter(Boolean)
+      .join('; ');
+  }
+
+  function buildClearedSessionCookie(request) {
+    return [
+      `${SESSION_COOKIE_NAME}=`,
+      'Path=/',
+      'HttpOnly',
+      'SameSite=Lax',
+      'Max-Age=0',
+      isSecureRequest(request) ? 'Secure' : '',
+    ]
+      .filter(Boolean)
+      .join('; ');
+  }
+
   function getBearerToken(request) {
     const header = request.headers.authorization || '';
     const [scheme, token] = header.split(' ');
     return scheme === 'Bearer' ? token : null;
   }
 
+  function getSessionToken(request) {
+    return parseCookies(request).get(SESSION_COOKIE_NAME) || getBearerToken(request) || '';
+  }
+
   async function getSessionUser(request) {
-    const token = getBearerToken(request);
+    const token = getSessionToken(request);
     if (!token) return null;
     const currentStore = await store.read();
     const session = currentStore.sessions.find((entry) => entry.token === token);
     if (!session) return null;
+    if (isSessionExpired(session)) {
+      await store.update((nextStore) => {
+        nextStore.sessions = nextStore.sessions.filter((entry) => entry.token !== token);
+        return nextStore;
+      });
+      return null;
+    }
     const user = currentStore.users.find((entry) => entry.id === session.userId);
-    if (!user) return null;
+    if (!user) {
+      await store.update((nextStore) => {
+        nextStore.sessions = nextStore.sessions.filter((entry) => entry.token !== token);
+        return nextStore;
+      });
+      return null;
+    }
     return { token, session, user, store: currentStore };
   }
 
   async function requireUser(request, response) {
     const sessionUser = await getSessionUser(request);
     if (!sessionUser) {
+      if (parseCookies(request).has(SESSION_COOKIE_NAME)) {
+        response.setHeader('Set-Cookie', buildClearedSessionCookie(request));
+      }
       errorResponse(request, response, 401, 'AUTH_REQUIRED', 'Autenticação obrigatória.');
       return null;
     }
@@ -705,6 +801,30 @@ export function createApp(options = {}) {
     return String(request.headers['x-forwarded-for'] || request.socket.remoteAddress || 'unknown')
       .split(',')[0]
       .trim();
+  }
+
+  function allowedOriginForRequest(request) {
+    const origin = String(request.headers.origin || '').trim();
+    if (!origin) return '';
+    if (corsOrigins.has('*')) return origin;
+    if (corsOrigins.has(origin)) return origin;
+    const host = String(request.headers.host || '').trim();
+    const forwardedProto = String(request.headers['x-forwarded-proto'] || '').trim() || 'http';
+    const sameHostOrigin = host ? `${forwardedProto}://${host}` : '';
+    return origin === sameHostOrigin ? origin : '';
+  }
+
+  function shouldEnforceOriginCheck(request) {
+    if (!['POST', 'PATCH', 'DELETE'].includes(request.method || '')) return false;
+    if (!String(request.url || '').startsWith('/api/')) return false;
+    return parseCookies(request).has(SESSION_COOKIE_NAME);
+  }
+
+  function validateMutationOrigin(request) {
+    if (!shouldEnforceOriginCheck(request)) return true;
+    const origin = String(request.headers.origin || '').trim();
+    if (!origin) return true;
+    return Boolean(allowedOriginForRequest(request));
   }
 
   function matchesOwnAddress(addresses, userId, addressId) {
@@ -777,6 +897,11 @@ export function createApp(options = {}) {
 
   async function handleApi(request, response, pathname) {
     await ensureStoreReady();
+
+    if (!validateMutationOrigin(request)) {
+      errorResponse(request, response, 403, 'FORBIDDEN', 'Origem da requisição não autorizada.');
+      return;
+    }
 
     if (request.method === 'GET' && pathname === '/api/health') {
       writeJson(response, 200, { status: 'ok' });
@@ -1036,11 +1161,14 @@ export function createApp(options = {}) {
           error.code = 'EMAIL_TAKEN';
           throw error;
         }
+        currentStore.sessions = pruneSessions(currentStore.sessions);
         currentStore.users.push(user);
         currentStore.sessions.push({ token, userId: user.id, createdAt });
+        currentStore.sessions = pruneSessions(currentStore.sessions);
         return currentStore;
       });
-      writeJson(response, 201, { user: sanitizeUser(user), accessToken: token });
+      response.setHeader('Set-Cookie', buildSessionCookie(token, request));
+      writeJson(response, 201, { user: sanitizeUser(user) });
       return;
     }
 
@@ -1061,23 +1189,34 @@ export function createApp(options = {}) {
       }
       const token = createToken();
       await store.update((nextStore) => {
+        nextStore.sessions = pruneSessions(nextStore.sessions);
         nextStore.sessions.push({ token, userId: user.id, createdAt: new Date().toISOString() });
+        nextStore.sessions = pruneSessions(nextStore.sessions);
+        const ownSessions = nextStore.sessions.filter((entry) => entry.userId === user.id);
+        if (ownSessions.length > MAX_ACTIVE_SESSIONS_PER_USER) {
+          const newestSessions = ownSessions.slice(0, MAX_ACTIVE_SESSIONS_PER_USER);
+          nextStore.sessions = nextStore.sessions.filter(
+            (entry) =>
+              entry.userId !== user.id ||
+              newestSessions.some((session) => session.token === entry.token)
+          );
+        }
         return nextStore;
       });
-      writeJson(response, 200, { user: sanitizeUser(user), accessToken: token });
+      response.setHeader('Set-Cookie', buildSessionCookie(token, request));
+      writeJson(response, 200, { user: sanitizeUser(user) });
       return;
     }
 
     if (request.method === 'POST' && pathname === '/api/auth/logout') {
-      const token = getBearerToken(request);
-      if (!token) {
-        writeNoContent(response);
-        return;
-      }
+      const token = getSessionToken(request);
       await store.update((currentStore) => {
-        currentStore.sessions = currentStore.sessions.filter((entry) => entry.token !== token);
+        currentStore.sessions = pruneSessions(currentStore.sessions).filter(
+          (entry) => entry.token !== token
+        );
         return currentStore;
       });
+      response.setHeader('Set-Cookie', buildClearedSessionCookie(request));
       writeNoContent(response);
       return;
     }
@@ -1592,6 +1731,10 @@ export function createApp(options = {}) {
     } catch (error) {
       if (error.code === 'INVALID_JSON') {
         errorResponse(request, response, 400, 'INVALID_JSON', error.message);
+        return;
+      }
+      if (error.code === 'PAYLOAD_TOO_LARGE') {
+        errorResponse(request, response, 413, 'PAYLOAD_TOO_LARGE', error.message);
         return;
       }
       if (error.code === 'EMAIL_TAKEN') {

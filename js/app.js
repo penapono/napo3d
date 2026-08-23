@@ -47,8 +47,36 @@ const state = {
   backendMode: 'mock',
 };
 
+const ROUTE_PATHS = {
+  home: '/',
+  cart: '/carrinho',
+  account: '/minha-conta',
+  shipping: '/endereco',
+};
+const LEGACY_ROUTE_MAP = {
+  cart: 'cart',
+  account: 'account',
+  shipping: 'shipping',
+};
+const POST_AUTH_ROUTE_KEY = 'napo3d-post-auth-route';
+
 const $ = (selector) => document.querySelector(selector);
-const currentPage = () => new URLSearchParams(location.search).get('page');
+const normalizePathname = (pathname) => {
+  const normalized = String(pathname || '').trim() || '/';
+  if (normalized === '/index.html') return '/';
+  return normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized;
+};
+const pathForPage = (page) => ROUTE_PATHS[page] || ROUTE_PATHS.home;
+const pageForPathname = (pathname) => {
+  const normalized = normalizePathname(pathname);
+  if (normalized === ROUTE_PATHS.home) return null;
+  return (
+    Object.entries(ROUTE_PATHS).find(
+      ([page, candidate]) => page !== 'home' && candidate === normalized
+    )?.[0] || null
+  );
+};
+const currentPage = () => pageForPathname(location.pathname);
 const money = (value) =>
   Number(value || 0).toLocaleString('pt-BR', {
     style: 'currency',
@@ -97,9 +125,50 @@ function setStatus(selector, message, tone = '') {
   node.dataset.tone = tone;
 }
 
+function storePostAuthPage(page) {
+  if (!page) return;
+  sessionStorage.setItem(POST_AUTH_ROUTE_KEY, pathForPage(page));
+}
+
+function consumePostAuthPath() {
+  const path = sessionStorage.getItem(POST_AUTH_ROUTE_KEY) || '';
+  sessionStorage.removeItem(POST_AUTH_ROUTE_KEY);
+  return path;
+}
+
+function navigateTo(page = null, options = {}) {
+  const hash = options.hash ? `#${String(options.hash).replace(/^#/, '')}` : '';
+  const nextPath = pathForPage(page);
+  const nextUrl = `${nextPath}${hash}`;
+  if (`${location.pathname}${location.hash}` !== nextUrl) {
+    history[options.replace ? 'replaceState' : 'pushState']({}, '', nextUrl);
+  }
+  renderStorePage();
+  if (page === 'shipping') refreshQuote().catch(console.error);
+  if (page) {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    return;
+  }
+  if (hash) {
+    requestAnimationFrame(() => {
+      document.querySelector(hash)?.scrollIntoView({ block: 'start' });
+    });
+  }
+}
+
 function redirect(page, params = {}) {
-  const search = new URLSearchParams({ page, ...params });
-  window.location.href = `./index.html?${search.toString()}`;
+  if (params.next) storePostAuthPage(params.next);
+  navigateTo(page, { hash: params.hash || '' });
+}
+
+function normalizeInitialLocation() {
+  const url = new URL(window.location.href);
+  const legacyPage = LEGACY_ROUTE_MAP[url.searchParams.get('page') || ''];
+  const legacyNext = LEGACY_ROUTE_MAP[url.searchParams.get('next') || ''];
+  if (legacyNext) storePostAuthPage(legacyNext);
+  if (!legacyPage && normalizePathname(url.pathname) !== '/index.html') return;
+  const nextPage = legacyPage || currentPage();
+  history.replaceState({}, '', `${pathForPage(nextPage)}${url.hash}`);
 }
 
 function productImage(item, option) {
@@ -598,14 +667,30 @@ async function refreshQuote() {
 
 function renderStorePage() {
   const page = currentPage();
-  if (!page) return;
-  document.querySelector('main').hidden = true;
+  document.querySelector('main').hidden = Boolean(page);
   document.querySelectorAll('.store-page').forEach((section) => {
-    section.hidden = section.id !== `${page}-page`;
+    section.hidden = !page || section.id !== `${page}-page`;
   });
+  if (!page) {
+    $('#cart-panel')?.classList.remove('open');
+  }
   renderCart();
   renderAccountPage();
   renderShippingPage();
+}
+
+function bindSpaLinks() {
+  document.querySelectorAll('[data-spa-link]').forEach((link) =>
+    link.addEventListener('click', (event) => {
+      const href = link.getAttribute('href') || '/';
+      const url = new URL(href, window.location.origin);
+      if (url.origin !== window.location.origin) return;
+      event.preventDefault();
+      navigateTo(pageForPathname(url.pathname), {
+        hash: url.hash.replace(/^#/, ''),
+      });
+    })
+  );
 }
 
 function bindSearchBox() {
@@ -766,8 +851,10 @@ function bindEvents() {
         '#account-page-status',
         state.authMode === 'register' ? 'Conta criada com sucesso.' : 'Login realizado com sucesso.'
       );
-      const next = new URLSearchParams(location.search).get('next');
-      if (next === 'shipping') setTimeout(() => redirect('shipping'), 350);
+      const nextPath = consumePostAuthPath();
+      if (nextPath) {
+        setTimeout(() => navigateTo(pageForPathname(nextPath)), 350);
+      }
     } catch (error) {
       setStatus('#account-page-status', error.message || 'Não foi possível autenticar.');
     }
@@ -860,6 +947,7 @@ function bindEvents() {
 }
 
 async function init() {
+  normalizeInitialLocation();
   await apiClient.init();
   state.backendMode = apiClient.getMode();
   await Promise.all([loadProducts(), refreshSession()]);
@@ -868,12 +956,17 @@ async function init() {
   renderCategories();
   renderCatalog();
   renderCart();
+  bindSpaLinks();
   bindSearchBox();
   renderHeader();
   bindEvents();
   renderStorePage();
   fillAddressForm();
   await refreshQuote();
+  window.addEventListener('popstate', () => {
+    renderStorePage();
+    if (currentPage() === 'shipping') refreshQuote().catch(console.error);
+  });
   const floatingTop = $('#floating-top-button');
   window.addEventListener(
     'scroll',
