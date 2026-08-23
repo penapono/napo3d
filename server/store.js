@@ -195,6 +195,12 @@ export function createMemoryStore(initialState = EMPTY_STORE) {
         return { seeded: seedList.length };
       });
     },
+    async replaceProducts(nextProducts) {
+      return runExclusive(async () => {
+        products = structuredClone(nextProducts);
+        return { count: products.length };
+      });
+    },
   };
 }
 
@@ -344,26 +350,21 @@ export function createPostgresStore(options = {}) {
       return withClient(async (client) => {
         const existing = await client.query('SELECT count(*)::int AS count FROM products');
         if (existing.rows[0].count > 0) return { seeded: 0 };
-        for (const product of seedList) {
-          await client.query(
-            `INSERT INTO products (id, name, category, reference, summary, page, production_time, options, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)
-             ON CONFLICT (id) DO NOTHING`,
-            [
-              product.id,
-              product.name,
-              nullIfEmpty(product.category),
-              nullIfEmpty(product.reference),
-              nullIfEmpty(product.summary),
-              product.page ?? null,
-              product.productionTime ?? null,
-              JSON.stringify(product.options || []),
-              asTimestamp(product.createdAt),
-              asTimestamp(product.updatedAt),
-            ]
-          );
-        }
+        await replaceProductsTable(client, seedList);
         return { seeded: seedList.length };
+      });
+    },
+    async replaceProducts(nextProducts) {
+      return withClient(async (client) => {
+        await client.query('BEGIN');
+        try {
+          await replaceProductsTable(client, nextProducts);
+          await client.query('COMMIT');
+          return { count: nextProducts.length };
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
       });
     },
     async close() {
@@ -643,6 +644,28 @@ function mapProductRow(row) {
     createdAt: asIsoString(row.created_at),
     updatedAt: asIsoString(row.updated_at),
   };
+}
+
+async function replaceProductsTable(client, products) {
+  await client.query('DELETE FROM products');
+  for (const product of products) {
+    await client.query(
+      `INSERT INTO products (id, name, category, reference, summary, page, production_time, options, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)`,
+      [
+        product.id,
+        product.name,
+        nullIfEmpty(product.category),
+        nullIfEmpty(product.reference),
+        nullIfEmpty(product.summary),
+        product.page ?? null,
+        product.productionTime ?? null,
+        JSON.stringify(product.options || []),
+        asTimestamp(product.createdAt),
+        asTimestamp(product.updatedAt),
+      ]
+    );
+  }
 }
 
 function nullIfEmpty(value) {

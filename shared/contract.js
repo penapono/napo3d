@@ -1,3 +1,5 @@
+import { primaryProductOption } from './catalog.js';
+
 export const PRICE_TIERS = [
   { label: 'Até 50 un.', maxQuantity: 50, rate: 375 },
   { label: '51 a 100 un.', maxQuantity: 100, rate: 325 },
@@ -240,11 +242,14 @@ export function buildQuote(items, resolveProduct, options = {}) {
       throw error;
     }
 
-    const option = (product.options || []).find(
+    const matchedOption = (product.options || []).find(
       (candidate) => candidate.name === entry?.optionName
     );
+    const option =
+      matchedOption ||
+      ((product.options || []).length === 1 ? primaryProductOption(product) : null);
     if (!option) {
-      const error = new Error(`Variação não encontrada: ${entry?.optionName}`);
+      const error = new Error(`Produto não encontrado: ${entry?.optionName || product.name}`);
       error.code = 'OPTION_NOT_FOUND';
       throw error;
     }
@@ -262,7 +267,7 @@ export function buildQuote(items, resolveProduct, options = {}) {
 
     return {
       productId: product.id,
-      optionName: option.name,
+      optionName: option.name || product.name,
       productNameSnapshot: product.name,
       unitWeightGrams,
       quantity,
@@ -308,14 +313,12 @@ export function sortProducts(products, sort = 'recommended') {
 }
 
 function productScore(product) {
-  return Math.max(0, ...(product.options || []).map((option) => Number(option.score) || 0));
+  const option = primaryProductOption(product);
+  return Number(option?.score) || 0;
 }
 
 function minProductPrice(product) {
-  return Math.min(
-    ...(product.options || [])
-      .map((option) => unitPriceFromWeight(weightInGrams(option), 1))
-      .filter((price) => Number.isFinite(price)),
-    Infinity
-  );
+  const option = primaryProductOption(product);
+  const price = unitPriceFromWeight(weightInGrams(option), 1);
+  return Number.isFinite(price) ? price : Infinity;
 }

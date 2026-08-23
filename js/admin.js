@@ -1,4 +1,5 @@
 import { apiClient, adminClient } from './api-client.js';
+import { primaryProductOption } from '../shared/catalog.js';
 
 const $ = (selector) => document.querySelector(selector);
 const money = (value) =>
@@ -46,9 +47,8 @@ function formatDate(value) {
 }
 
 function makerWorldOptionCount(product) {
-  return (product.options || []).filter((option) =>
-    /https?:\/\/(?:www\.)?makerworld\.com\//i.test(option?.url || '')
-  ).length;
+  const option = primaryProductOption(product);
+  return /https?:\/\/(?:www\.)?makerworld\.com\//i.test(option?.url || '') ? 1 : 0;
 }
 
 function makerWorldRefreshSummary(product) {
@@ -109,56 +109,31 @@ function switchTab(tab) {
   if (tab === 'users') loadUsers();
 }
 
-function optionRowValues(row) {
-  let original = {};
-  try {
-    original = JSON.parse(row.dataset.optionOriginal || '{}');
-  } catch {
-    original = {};
-  }
-  const field = (name) => row.querySelector(`[data-option-field="${name}"]`)?.value || '';
-  return {
-    ...original,
-    name: field('name'),
-    weight: Number(field('weight')),
-    colors: field('colors'),
-    score: Number(field('score')) || 0,
-    url: field('url'),
-    imageUrl: field('imageUrl'),
-  };
-}
-
-function addOptionRow(option = {}) {
-  const template = $('#admin-option-row-template');
-  const clone = template.content.firstElementChild.cloneNode(true);
-  clone.dataset.optionOriginal = JSON.stringify(option || {});
-  Object.entries(option).forEach(([key, value]) => {
-    const field = clone.querySelector(`[data-option-field="${key}"]`);
-    if (field) field.value = value ?? '';
-  });
-  clone.querySelector('.admin-option-remove').addEventListener('click', () => clone.remove());
-  $('#admin-options-list').appendChild(clone);
-}
-
 function openProductDialog(product = null) {
   state.editingProductId = product?.id || null;
   $('#admin-product-dialog-eyebrow').textContent = product ? 'Editar produto' : 'Novo produto';
   $('#admin-product-dialog-title').textContent = product ? product.name : 'Cadastrar produto';
   const form = $('#admin-product-form');
   form.reset();
-  $('#admin-options-list').innerHTML = '';
+  const option = primaryProductOption(product) || {};
   form.elements.namedItem('name').value = product?.name || '';
   form.elements.namedItem('category').value = product?.category || '';
   form.elements.namedItem('page').value = product?.page || '';
   form.elements.namedItem('summary').value = product?.summary || '';
   form.elements.namedItem('reference').value = product?.reference || '';
-  (product?.options?.length ? product.options : [{}]).forEach(addOptionRow);
+  form.elements.namedItem('weight').value = option.weight || '';
+  form.elements.namedItem('productionTime').value =
+    option.productionTime || product?.productionTime || '';
+  form.elements.namedItem('colors').value = option.colors || '';
+  form.elements.namedItem('score').value = option.score || '';
+  form.elements.namedItem('url').value = option.url || '';
+  form.elements.namedItem('imageUrl').value = option.imageUrl || '';
   setStatus('#admin-product-status', '');
   $('#admin-product-dialog').showModal();
 }
 
 function productRow(product) {
-  const optionCount = (product.options || []).length;
+  const option = primaryProductOption(product);
   const makerWorldCount = makerWorldOptionCount(product);
   const refresh = product.makerworldRefresh;
   const refreshSummary = makerWorldRefreshSummary(product);
@@ -166,7 +141,7 @@ function productRow(product) {
   return `<article class="admin-list-row">
     <div class="admin-list-row-info">
       <strong>${text(product.name)}</strong>
-      <span>${text(product.category || 'Sem categoria')} · ${optionCount} variação(ões)</span>
+      <span>${text(product.category || 'Sem categoria')} · ${Number(option?.weight || 0)} g</span>
       ${refreshSummary ? `<span class="admin-refresh-note" data-tone="${text(refreshTone)}">${text(refreshSummary)}</span>` : ''}
     </div>
     <div class="admin-list-row-actions">
@@ -227,19 +202,34 @@ function bindProductEvents() {
   $('#admin-product-dialog-close')?.addEventListener('click', () =>
     $('#admin-product-dialog').close()
   );
-  $('#admin-option-add')?.addEventListener('click', () => addOptionRow());
   $('#admin-product-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
+    const optionName = form.elements.namedItem('name').value.trim();
     const payload = {
-      name: form.elements.namedItem('name').value.trim(),
+      name: optionName,
       category: form.elements.namedItem('category').value.trim(),
       page: form.elements.namedItem('page').value
         ? Number(form.elements.namedItem('page').value)
         : undefined,
       summary: form.elements.namedItem('summary').value.trim(),
       reference: form.elements.namedItem('reference').value.trim(),
-      options: [...$('#admin-options-list').children].map(optionRowValues),
+      productionTime: form.elements.namedItem('productionTime').value
+        ? Number(form.elements.namedItem('productionTime').value)
+        : undefined,
+      options: [
+        {
+          name: optionName,
+          weight: Number(form.elements.namedItem('weight').value),
+          productionTime: form.elements.namedItem('productionTime').value
+            ? Number(form.elements.namedItem('productionTime').value)
+            : undefined,
+          colors: form.elements.namedItem('colors').value.trim(),
+          score: Number(form.elements.namedItem('score').value) || 0,
+          url: form.elements.namedItem('url').value.trim(),
+          imageUrl: form.elements.namedItem('imageUrl').value.trim(),
+        },
+      ],
     };
     setStatus('#admin-product-status', 'Salvando...');
     try {

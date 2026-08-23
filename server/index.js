@@ -15,6 +15,7 @@ import {
   validateAddressInput,
   validateProductInput,
 } from '../shared/contract.js';
+import { flattenCatalogProducts, hasLegacyProductVariations } from '../shared/catalog.js';
 import { processPendingEmails, resolveMailerConfig } from './mailer.js';
 import {
   hasMakerWorldOptions,
@@ -55,11 +56,12 @@ export function createApp(options = {}) {
     items: [],
   };
   let seedCatalogPromise = null;
+  let productMigrationPromise = null;
 
   async function seedCatalogIfNeeded() {
     const raw = await readFile(catalogSeedPath, 'utf8');
     const now = new Date().toISOString();
-    const seedProducts = JSON.parse(raw).map((product) => ({
+    const seedProducts = flattenCatalogProducts(JSON.parse(raw)).map((product) => ({
       ...product,
       createdAt: now,
       updatedAt: now,
@@ -70,12 +72,28 @@ export function createApp(options = {}) {
     }
   }
 
+  async function migrateCatalogIfNeeded() {
+    const current = await store.listProducts();
+    if (!current.some(hasLegacyProductVariations)) return;
+    const migrated = flattenCatalogProducts(current).map((product) => ({
+      ...product,
+      updatedAt: new Date().toISOString(),
+    }));
+    await store.replaceProducts(migrated);
+    invalidateCatalogCache();
+    console.log(`[catalog] flattened ${current.length} legacy products into ${migrated.length}.`);
+  }
+
   async function ensureStoreReady() {
     await store.init?.();
     if (!seedCatalogPromise) {
       seedCatalogPromise = seedCatalogIfNeeded();
     }
     await seedCatalogPromise;
+    if (!productMigrationPromise) {
+      productMigrationPromise = migrateCatalogIfNeeded();
+    }
+    await productMigrationPromise;
   }
 
   function invalidateCatalogCache() {

@@ -5,6 +5,7 @@ import {
   unitPriceFromWeight,
   weightInGrams,
 } from '../shared/contract.js';
+import { primaryProductOption } from '../shared/catalog.js';
 import { apiClient } from './api-client.js';
 
 const copy = {
@@ -118,26 +119,18 @@ function image(url, alt, fallbackUrl = '') {
   return `<img src="${text(url)}" alt="${text(alt)}" loading="lazy" onerror="${fallback}"><div class="image-fallback" hidden>Imagem indisponível</div>`;
 }
 
-function optionsFor(item) {
-  return [...(item.options || [])].sort(
-    (left, right) => (Number(right.score) || 0) - (Number(left.score) || 0)
-  );
-}
-
 function visibleEntries() {
   const query = state.query.trim().toLowerCase();
-  const products = sortProducts(
+  return sortProducts(
     state.items.filter((item) => {
       if (state.category !== 'all' && item.category !== state.category) return false;
+      const option = primaryProductOption(item);
       if (!query) return true;
       const haystack =
-        `${item.name} ${item.category} ${item.summary || ''} ${(item.options || []).map((option) => `${option.name} ${option.colors || ''}`).join(' ')}`.toLowerCase();
+        `${item.name} ${item.category} ${item.summary || ''} ${option?.name || ''} ${option?.colors || ''}`.toLowerCase();
       return haystack.includes(query);
     }),
     state.sort
-  );
-  return products.flatMap((item) =>
-    optionsFor(item).map((option, index) => ({ item, option, index }))
   );
 }
 
@@ -145,20 +138,16 @@ function findProduct(productId) {
   return state.items.find((item) => item.id === productId) || null;
 }
 
-function findOption(productId, optionName) {
-  return findProduct(productId)?.options?.find((option) => option.name === optionName) || null;
-}
-
 function cartLine(entry) {
   const item = findProduct(entry.productId);
-  const option = findOption(entry.productId, entry.optionName);
+  const option = primaryProductOption(item);
   if (!item || !option) return null;
   const unitPrice = unitPriceFromWeight(weightInGrams(option), entry.quantity) || 0;
   return {
     item,
     option,
     quantity: entry.quantity,
-    label: `${item.name} — ${option.name}`,
+    label: item.name,
     unitPrice,
     lineTotal: unitPrice * entry.quantity,
     productionMinutes: lineProductionMinutes(item, entry.quantity, option),
@@ -175,10 +164,13 @@ function cartSummary() {
   };
 }
 
-function card(entry) {
-  const { item, option, index } = entry;
+function card(item) {
+  const option = primaryProductOption(item);
+  if (!option) return '';
   const description =
-    copy[item.category] || 'Uma peça especial, feita para fazer parte da sua rotina.';
+    item.summary ||
+    copy[item.category] ||
+    'Uma peça especial, feita para fazer parte da sua rotina.';
   const imageSource = productImage(item, option);
   const tierPrices = [
     { label: 'Até 50 un.', quantity: 1 },
@@ -190,7 +182,7 @@ function card(entry) {
         `<div class="tier-price"><span>${tier.label}</span><strong>${money(unitPriceFromWeight(weightInGrams(option), tier.quantity))}</strong><small>por peça</small></div>`
     )
     .join('');
-  return `<article class="product-card"><div class="product-image">${image(imageSource.primary, `${item.name} — ${option.name}`, imageSource.fallback)}<span class="product-tag">${text(item.category)}</span></div><div class="product-info"><span class="product-variant">Opção ${index + 1}</span><h3>${text(item.name)}</h3><p class="variant-name">${text(option.name)}</p><span class="product-category">${description}</span><div class="tier-prices" aria-label="Preços por quantidade">${tierPrices}</div><button class="quote-button add-to-cart icon-action" type="button" data-product-id="${text(item.id)}" data-option-name="${text(option.name)}" aria-label="Adicionar ${text(item.name)} — ${text(option.name)} ao carrinho" title="Adicionar ao carrinho"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4L21 8H7"/><circle cx="10" cy="19" r="1.5"/><circle cx="18" cy="19" r="1.5"/><path d="M16 4v5M13.5 6.5h5"/></svg><span class="sr-only">Adicionar ao carrinho</span></button></div></article>`;
+  return `<article class="product-card"><div class="product-image">${image(imageSource.primary, item.name, imageSource.fallback)}<span class="product-tag">${text(item.category)}</span></div><div class="product-info"><h3>${text(item.name)}</h3><p class="variant-name">${text(description)}</p><div class="tier-prices" aria-label="Preços por quantidade">${tierPrices}</div><button class="quote-button add-to-cart icon-action" type="button" data-product-id="${text(item.id)}" aria-label="Adicionar ${text(item.name)} ao carrinho" title="Adicionar ao carrinho"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4L21 8H7"/><circle cx="10" cy="19" r="1.5"/><circle cx="18" cy="19" r="1.5"/><path d="M16 4v5M13.5 6.5h5"/></svg><span class="sr-only">Adicionar ao carrinho</span></button></div></article>`;
 }
 
 function renderPagination(total) {
@@ -229,9 +221,7 @@ function renderCatalog() {
   grid
     .querySelectorAll('.add-to-cart')
     .forEach((button) =>
-      button.addEventListener('click', () =>
-        openQuantityDialog(button.dataset.productId, button.dataset.optionName)
-      )
+      button.addEventListener('click', () => openQuantityDialog(button.dataset.productId))
     );
 }
 
@@ -270,16 +260,16 @@ function renderCart() {
     ($('#page-production-total').textContent = formatDuration(summary.productionMinutes));
 }
 
-function openQuantityDialog(productId, optionName) {
+function openQuantityDialog(productId) {
   const item = findProduct(productId);
-  const option = findOption(productId, optionName);
+  const option = primaryProductOption(item);
   if (!item || !option) return;
   state.pendingItem = { item, option };
   const source = productImage(item, option);
   $('#quantity-title').textContent = item.name;
-  $('#quantity-description').textContent = option.name;
+  $('#quantity-description').textContent = item.summary || option.name || '';
   $('#quantity-image').src = source.primary;
-  $('#quantity-image').alt = `${item.name} — ${option.name}`;
+  $('#quantity-image').alt = item.name;
   renderQuantityGallery(option);
   $('#quantity-input').value = 1;
   updateQuantityPreview();
@@ -324,7 +314,9 @@ function updateQuantityPreview() {
   )}`;
 }
 
-function addToCart(productId, optionName, quantity) {
+function addToCart(productId, quantity) {
+  const item = findProduct(productId);
+  const optionName = primaryProductOption(item)?.name || item?.name || '';
   const existing = state.cart.find(
     (entry) => entry.productId === productId && entry.optionName === optionName
   );
@@ -419,8 +411,6 @@ function renderOrders() {
 function renderAccountPage() {
   renderHeader();
   if (currentPage() !== 'account') return;
-  $('#backend-badge').textContent =
-    state.backendMode === 'live' ? 'Backend ativo' : 'Modo mock local';
   const authControls = $('#account-auth-controls');
   const modeLabel = $('#account-mode-label');
   document.querySelectorAll('[data-auth-mode]').forEach((button) => {
@@ -531,8 +521,6 @@ function renderShippingPage() {
     redirect('account', { next: 'shipping' });
     return;
   }
-  $('#shipping-backend-badge').textContent =
-    state.backendMode === 'live' ? 'Backend ativo' : 'Modo mock local';
   $('#shipping-addresses').innerHTML = state.addresses.length
     ? state.addresses.map(addressCard).join('')
     : '<p class="empty-state-inline">Nenhum endereço salvo ainda.</p>';
@@ -696,11 +684,7 @@ function bindEvents() {
   $('#quantity-close')?.addEventListener('click', () => $('#quantity-dialog').close());
   $('#quantity-confirm')?.addEventListener('click', () => {
     if (!state.pendingItem) return;
-    addToCart(
-      state.pendingItem.item.id,
-      state.pendingItem.option.name,
-      Math.max(1, Number($('#quantity-input').value) || 1)
-    );
+    addToCart(state.pendingItem.item.id, Math.max(1, Number($('#quantity-input').value) || 1));
     state.pendingItem = null;
     $('#quantity-dialog').close();
   });

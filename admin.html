@@ -111,41 +111,26 @@
         </div>
         <label>Resumo<input name="summary" /></label>
         <label>Imagem de referência (URL ou data URI)<input name="reference" /></label>
-        <div class="admin-options-heading">
-          <span>Variações</span>
-          <button class="button button-secondary" id="admin-option-add" type="button">
-            Adicionar variação
-          </button>
+        <div class="form-row">
+          <label>Peso (g)<input name="weight" type="number" min="1" step="1" required /></label>
+          <label
+            >Tempo de produção (min)<input name="productionTime" type="number" min="1" step="1"
+          /></label>
         </div>
-        <div id="admin-options-list"></div>
+        <div class="form-row">
+          <label>Cor(es)<input name="colors" /></label>
+          <label>Pontuação<input name="score" type="number" step="1" /></label>
+        </div>
+        <div class="form-row">
+          <label>URL do MakerWorld<input name="url" /></label>
+          <label>URL da imagem<input name="imageUrl" /></label>
+        </div>
         <p class="form-status" id="admin-product-status" role="status"></p>
         <div class="inline-actions">
           <button class="button button-primary" type="submit">Salvar produto</button>
         </div>
       </form>
     </dialog>
-
-    <template id="admin-option-row-template">
-      <div class="admin-option-row">
-        <div class="form-row">
-          <label>Nome da variação<input data-option-field="name" required /></label>
-          <label
-            >Peso (g)<input data-option-field="weight" type="number" min="1" step="1" required
-          /></label>
-        </div>
-        <div class="form-row">
-          <label>Cor(es)<input data-option-field="colors" /></label>
-          <label>Pontuação<input data-option-field="score" type="number" step="1" /></label>
-        </div>
-        <div class="form-row">
-          <label>URL<input data-option-field="url" /></label>
-          <label>URL da imagem<input data-option-field="imageUrl" /></label>
-        </div>
-        <button class="button button-secondary admin-option-remove" type="button">
-          Remover variação
-        </button>
-      </div>
-    </template>
 
     <dialog class="quantity-dialog admin-dialog" id="admin-order-dialog">
       <button class="dialog-close" id="admin-order-dialog-close" type="button" aria-label="Fechar">

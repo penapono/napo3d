@@ -4,6 +4,7 @@ import {
   sortProducts,
   validateAddressInput,
 } from '../shared/contract.js';
+import { flattenCatalogProducts } from '../shared/catalog.js';
 
 const DB_KEY = 'napo3d-mock-db';
 
@@ -66,14 +67,14 @@ export function createMockBackend({ getToken, loadCatalog }) {
   }
 
   async function resolveQuote(items) {
-    const products = await loadCatalog();
+    const products = flattenCatalogProducts(await loadCatalog());
     const map = new Map(products.map((product) => [product.id, product]));
     return buildQuote(items, (productId) => map.get(productId));
   }
 
   return {
     async getProducts(params = {}) {
-      const products = await loadCatalog();
+      const products = flattenCatalogProducts(await loadCatalog());
       const query = String(params.query || '')
         .trim()
         .toLowerCase();
@@ -83,9 +84,10 @@ export function createMockBackend({ getToken, loadCatalog }) {
       const filtered = sortProducts(
         products.filter((item) => {
           if (category && category !== 'all' && item.category !== category) return false;
+          const option = item.options?.[0];
           if (!query) return true;
           const haystack =
-            `${item.name} ${item.category} ${item.summary || ''} ${(item.options || []).map((option) => `${option.name} ${option.colors || ''}`).join(' ')}`.toLowerCase();
+            `${item.name} ${item.category} ${item.summary || ''} ${option?.name || ''} ${option?.colors || ''}`.toLowerCase();
           return haystack.includes(query);
         }),
         params.sort || 'recommended'
