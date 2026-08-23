@@ -137,18 +137,25 @@
 }
 
 .admin-dialog input,
-.admin-dialog select {
+.admin-dialog select,
+.admin-dialog textarea {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 22px;
   box-shadow: inset 0 1px 2px rgba(28, 36, 32, 0.03);
   color: var(--ink);
   font: inherit;
   padding: 13px 16px;
 }
 
+.admin-dialog textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
 .admin-dialog input:focus,
-.admin-dialog select:focus {
+.admin-dialog select:focus,
+.admin-dialog textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(255, 90, 54, 0.12);
   outline: 0;

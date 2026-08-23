@@ -59,6 +59,10 @@ export function normalizeOptionalTextList(values) {
   return values.map(normalizeOptionalText).filter(Boolean);
 }
 
+export function normalizeOptionalObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : {};
+}
+
 export function normalizeRequiredText(value) {
   return String(value || '').trim();
 }
@@ -205,6 +209,9 @@ export function validateProductInput(product = {}) {
       category: normalizeOptionalText(product.category) || '',
       reference: normalizeOptionalText(product.reference) || '',
       summary: normalizeOptionalText(product.summary) || '',
+      description: normalizeOptionalText(product.description) || '',
+      keywords: normalizeOptionalTextList(product.keywords),
+      aiData: normalizeOptionalObject(product.aiData),
       page: Number.isFinite(Number(product.page)) ? Number(product.page) : undefined,
       productionTime: Number.isFinite(Number(product.productionTime))
         ? Number(product.productionTime)

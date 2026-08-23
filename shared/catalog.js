@@ -44,6 +44,18 @@ export function flattenLegacyProduct(product = {}) {
   });
 }
 
+export function buildCategoryCounts(products = []) {
+  const counts = new Map();
+  for (const product of products) {
+    const category = String(product?.category || '').trim();
+    if (!category) continue;
+    counts.set(category, (counts.get(category) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((left, right) => left[0].localeCompare(right[0], 'pt-BR'))
+    .map(([name, count]) => ({ name, count }));
+}
+
 function joinName(productName, optionName) {
   const base = String(productName || '').trim();
   const option = String(optionName || '').trim();

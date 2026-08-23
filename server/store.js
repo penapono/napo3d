@@ -112,6 +112,9 @@ CREATE TABLE IF NOT EXISTS products (
   category text,
   reference text,
   summary text,
+  description text,
+  keywords jsonb NOT NULL DEFAULT '[]',
+  ai_data jsonb NOT NULL DEFAULT '{}',
   page integer,
   production_time integer,
   options jsonb NOT NULL DEFAULT '[]',
@@ -120,6 +123,9 @@ CREATE TABLE IF NOT EXISTS products (
 );
 
 ALTER TABLE products ADD COLUMN IF NOT EXISTS production_time integer;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS keywords jsonb NOT NULL DEFAULT '[]';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS ai_data jsonb NOT NULL DEFAULT '{}';
 `;
 
 export function createMemoryStore(initialState = EMPTY_STORE) {
@@ -287,14 +293,19 @@ export function createPostgresStore(options = {}) {
     async createProduct(product) {
       return withClient(async (client) => {
         await client.query(
-          `INSERT INTO products (id, name, category, reference, summary, page, production_time, options, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)`,
+          `INSERT INTO products (
+             id, name, category, reference, summary, description, keywords, ai_data,
+             page, production_time, options, created_at, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11::jsonb, $12, $13)`,
           [
             product.id,
             product.name,
             nullIfEmpty(product.category),
             nullIfEmpty(product.reference),
             nullIfEmpty(product.summary),
+            nullIfEmpty(product.description),
+            JSON.stringify(product.keywords || []),
+            JSON.stringify(product.aiData || {}),
             product.page ?? null,
             product.productionTime ?? null,
             JSON.stringify(product.options || []),
@@ -321,10 +332,13 @@ export function createPostgresStore(options = {}) {
                  category = $3,
                  reference = $4,
                  summary = $5,
-                 page = $6,
-                 production_time = $7,
-                 options = $8::jsonb,
-                 updated_at = $9
+                 description = $6,
+                 keywords = $7::jsonb,
+                 ai_data = $8::jsonb,
+                 page = $9,
+                 production_time = $10,
+                 options = $11::jsonb,
+                 updated_at = $12
            WHERE id = $1`,
           [
             id,
@@ -332,6 +346,9 @@ export function createPostgresStore(options = {}) {
             nullIfEmpty(next.category),
             nullIfEmpty(next.reference),
             nullIfEmpty(next.summary),
+            nullIfEmpty(next.description),
+            JSON.stringify(next.keywords || []),
+            JSON.stringify(next.aiData || {}),
             next.page ?? null,
             next.productionTime ?? null,
             JSON.stringify(next.options || []),
@@ -638,6 +655,9 @@ function mapProductRow(row) {
     category: undefinedIfNull(row.category),
     reference: undefinedIfNull(row.reference),
     summary: undefinedIfNull(row.summary),
+    description: undefinedIfNull(row.description),
+    keywords: Array.isArray(row.keywords) ? row.keywords : [],
+    aiData: row.ai_data && typeof row.ai_data === 'object' ? row.ai_data : {},
     page: row.page == null ? undefined : Number(row.page),
     productionTime: row.production_time == null ? undefined : Number(row.production_time),
     options: row.options || [],
@@ -650,14 +670,19 @@ async function replaceProductsTable(client, products) {
   await client.query('DELETE FROM products');
   for (const product of products) {
     await client.query(
-      `INSERT INTO products (id, name, category, reference, summary, page, production_time, options, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)`,
+      `INSERT INTO products (
+         id, name, category, reference, summary, description, keywords, ai_data,
+         page, production_time, options, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11::jsonb, $12, $13)`,
       [
         product.id,
         product.name,
         nullIfEmpty(product.category),
         nullIfEmpty(product.reference),
         nullIfEmpty(product.summary),
+        nullIfEmpty(product.description),
+        JSON.stringify(product.keywords || []),
+        JSON.stringify(product.aiData || {}),
         product.page ?? null,
         product.productionTime ?? null,
         JSON.stringify(product.options || []),

@@ -15,8 +15,17 @@ import {
   validateAddressInput,
   validateProductInput,
 } from '../shared/contract.js';
-import { flattenCatalogProducts, hasLegacyProductVariations } from '../shared/catalog.js';
+import {
+  buildCategoryCounts,
+  flattenCatalogProducts,
+  hasLegacyProductVariations,
+} from '../shared/catalog.js';
 import { processPendingEmails, resolveMailerConfig } from './mailer.js';
+import {
+  collectProductImageUrls,
+  enrichProductWithOpenAi,
+  isAiProductEnrichmentConfigured,
+} from './ai-enrichment.js';
 import {
   hasMakerWorldOptions,
   makerWorldOptionTargets,
@@ -36,6 +45,9 @@ export function createApp(options = {}) {
   const makerWorldScrapeIntervalMs = normalizeIntervalMs(
     options.makerWorldScrapeIntervalMs ?? process.env.MAKERWORLD_SCRAPE_INTERVAL_MS ?? 60_000
   );
+  const aiEnrichmentIntervalMs = normalizeIntervalMs(
+    options.aiEnrichmentIntervalMs ?? process.env.AI_PRODUCT_ENRICHMENT_INTERVAL_MS ?? 0
+  );
   const store =
     options.store ||
     createPostgresStore({
@@ -50,11 +62,24 @@ export function createApp(options = {}) {
       runMakerWorldScraper(normalizeMakerWorldUrl(url) || url, {
         scraperUrl: options.makerWorldScraperUrl || process.env.MAKERWORLD_SCRAPER_URL,
       }));
+  const enrichProductWithAi =
+    options.enrichProductWithAi ||
+    ((product, categories) =>
+      enrichProductWithOpenAi(product, categories, {
+        apiKey: options.openAiApiKey || process.env.OPENAI_API_KEY,
+        model: options.openAiProductEnrichmentModel || process.env.OPENAI_PRODUCT_ENRICHMENT_MODEL,
+        apiUrl: options.openAiApiUrl || process.env.OPENAI_API_URL,
+        fetchImpl: options.fetchImpl,
+      }));
   const rateLimits = new Map();
   const makerWorldRefreshJobs = new Map();
   const makerWorldActiveRefreshes = new Map();
   let makerWorldScrapeQueue = Promise.resolve();
   let makerWorldLastFinishedAt = 0;
+  const aiEnrichmentJobs = new Map();
+  const aiActiveEnrichments = new Map();
+  let aiEnrichmentQueue = Promise.resolve();
+  let aiEnrichmentLastFinishedAt = 0;
 
   const catalogState = {
     loadedAt: 0,
@@ -120,6 +145,19 @@ export function createApp(options = {}) {
     };
   }
 
+  function serializeAiEnrichmentJob(job) {
+    if (!job) return null;
+    return {
+      status: job.status,
+      startedAt: job.startedAt || null,
+      queuedAt: job.queuedAt || null,
+      updatedAt: job.updatedAt || null,
+      finishedAt: job.finishedAt || null,
+      error: job.error || '',
+      model: job.model || '',
+    };
+  }
+
   function queueMakerWorldScrape(url, options = {}) {
     const previous = makerWorldScrapeQueue.catch(() => {});
     const task = previous.then(async () => {
@@ -140,10 +178,37 @@ export function createApp(options = {}) {
     return task;
   }
 
+  function queueAiEnrichment(taskRunner, options = {}) {
+    const previous = aiEnrichmentQueue.catch(() => {});
+    const task = previous.then(async () => {
+      const waitMs = aiEnrichmentLastFinishedAt
+        ? Math.max(0, aiEnrichmentLastFinishedAt + aiEnrichmentIntervalMs - Date.now())
+        : 0;
+      if (waitMs > 0) {
+        await sleep(waitMs);
+      }
+      options.onStart?.();
+      try {
+        return await taskRunner();
+      } finally {
+        aiEnrichmentLastFinishedAt = Date.now();
+      }
+    });
+    aiEnrichmentQueue = task.catch(() => {});
+    return task;
+  }
+
   function setMakerWorldJob(productId, patch) {
     const current = makerWorldRefreshJobs.get(productId) || { productId };
     const next = { ...current, ...patch, productId };
     makerWorldRefreshJobs.set(productId, next);
+    return next;
+  }
+
+  function setAiEnrichmentJob(productId, patch) {
+    const current = aiEnrichmentJobs.get(productId) || { productId };
+    const next = { ...current, ...patch, productId };
+    aiEnrichmentJobs.set(productId, next);
     return next;
   }
 
@@ -152,7 +217,24 @@ export function createApp(options = {}) {
       ...product,
       hasMakerWorldOptions: hasMakerWorldOptions(product),
       makerworldRefresh: serializeMakerWorldJob(makerWorldRefreshJobs.get(product.id)),
+      hasAiEnrichmentCandidate: Boolean(
+        String(product?.name || '').trim() && collectProductImageUrls(product).length
+      ),
+      aiEnrichment: serializeAiEnrichmentJob(aiEnrichmentJobs.get(product.id)),
     };
+  }
+
+  function availableCatalogCategories(products, currentProduct = null) {
+    const counts = buildCategoryCounts(
+      products.filter((product) => product.id !== currentProduct?.id || product.category)
+    );
+    const names = counts.map((entry) => entry.name);
+    const currentCategory = String(currentProduct?.category || '').trim();
+    if (currentCategory && !names.includes(currentCategory)) {
+      names.push(currentCategory);
+      names.sort((left, right) => left.localeCompare(right, 'pt-BR'));
+    }
+    return names;
   }
 
   function startMakerWorldRefresh(productId) {
@@ -246,6 +328,7 @@ export function createApp(options = {}) {
         }
 
         invalidateCatalogCache();
+        maybeStartAiEnrichment(productId, updated);
         const finishedAt = new Date().toISOString();
         setMakerWorldJob(productId, {
           status: 'succeeded',
@@ -275,6 +358,109 @@ export function createApp(options = {}) {
     return {
       alreadyRunning: false,
       job: serializeMakerWorldJob(makerWorldRefreshJobs.get(productId)),
+    };
+  }
+
+  function canUseAiEnrichment() {
+    return isAiProductEnrichmentConfigured({
+      apiKey: options.openAiApiKey || process.env.OPENAI_API_KEY,
+    });
+  }
+
+  function maybeStartAiEnrichment(productId, product = null) {
+    if (!canUseAiEnrichment()) return null;
+    if (
+      product &&
+      (!String(product.name || '').trim() || !collectProductImageUrls(product).length)
+    ) {
+      return null;
+    }
+    return startAiEnrichment(productId);
+  }
+
+  function startAiEnrichment(productId) {
+    const running = aiActiveEnrichments.get(productId);
+    if (running) {
+      return {
+        alreadyRunning: true,
+        job: serializeAiEnrichmentJob(aiEnrichmentJobs.get(productId)),
+      };
+    }
+
+    const queuedAt = new Date().toISOString();
+    setAiEnrichmentJob(productId, {
+      status: 'queued',
+      model:
+        options.openAiProductEnrichmentModel ||
+        process.env.OPENAI_PRODUCT_ENRICHMENT_MODEL ||
+        'gpt-4o-mini',
+      startedAt: null,
+      queuedAt,
+      updatedAt: queuedAt,
+      finishedAt: null,
+      error: '',
+    });
+
+    const promise = (async () => {
+      try {
+        const product = await store.getProduct(productId);
+        if (!product) {
+          const error = new Error('Produto não encontrado.');
+          error.code = 'PRODUCT_NOT_FOUND';
+          throw error;
+        }
+        if (!String(product.name || '').trim() || !collectProductImageUrls(product).length) {
+          const error = new Error(
+            'Este produto precisa ter nome e imagem para gerar descrição por IA.'
+          );
+          error.code = 'AI_ENRICHMENT_INPUT_INVALID';
+          throw error;
+        }
+
+        const categories = availableCatalogCategories(await loadCatalog(), product);
+        const patch = await queueAiEnrichment(() => enrichProductWithAi(product, categories), {
+          onStart: () => {
+            const now = new Date().toISOString();
+            setAiEnrichmentJob(productId, {
+              status: 'running',
+              startedAt: aiEnrichmentJobs.get(productId)?.startedAt || now,
+              updatedAt: now,
+            });
+          },
+        });
+
+        const updated = await store.updateProduct(productId, patch);
+        if (!updated) {
+          const error = new Error('Produto não encontrado.');
+          error.code = 'PRODUCT_NOT_FOUND';
+          throw error;
+        }
+
+        invalidateCatalogCache();
+        const finishedAt = new Date().toISOString();
+        setAiEnrichmentJob(productId, {
+          status: 'succeeded',
+          updatedAt: finishedAt,
+          finishedAt,
+          error: '',
+        });
+      } catch (error) {
+        const finishedAt = new Date().toISOString();
+        setAiEnrichmentJob(productId, {
+          status: 'failed',
+          updatedAt: finishedAt,
+          finishedAt,
+          error: error.message || 'Falha ao enriquecer este produto com IA.',
+        });
+      } finally {
+        aiActiveEnrichments.delete(productId);
+      }
+    })();
+
+    aiActiveEnrichments.set(productId, promise);
+    return {
+      alreadyRunning: false,
+      job: serializeAiEnrichmentJob(aiEnrichmentJobs.get(productId)),
     };
   }
 
@@ -597,6 +783,7 @@ export function createApp(options = {}) {
 
     if (request.method === 'GET' && pathname === '/api/products') {
       const catalog = await loadCatalog();
+      const categoryCounts = buildCategoryCounts(catalog);
       const url = new URL(request.url, 'http://localhost');
       const query = String(url.searchParams.get('query') || '')
         .trim()
@@ -611,7 +798,7 @@ export function createApp(options = {}) {
           if (category && category !== 'all' && product.category !== category) return false;
           if (!query) return true;
           const haystack =
-            `${product.name} ${product.category} ${product.summary || ''} ${(product.options || []).map((option) => `${option.name} ${option.colors || ''}`).join(' ')}`.toLowerCase();
+            `${product.name} ${product.category} ${product.summary || ''} ${product.description || ''} ${(product.keywords || []).join(' ')} ${(product.options || []).map((option) => `${option.name} ${option.colors || ''}`).join(' ')}`.toLowerCase();
           return haystack.includes(query);
         }),
         sort
@@ -622,6 +809,7 @@ export function createApp(options = {}) {
       const offset = (page - 1) * limit;
       writeJson(response, 200, {
         items: filtered.slice(offset, offset + limit),
+        categories: categoryCounts,
         pagination: { page, limit, total, totalPages },
       });
       return;
@@ -658,6 +846,7 @@ export function createApp(options = {}) {
           const product = await buildProductFromMakerWorldUrl(body);
           await store.createProduct(product);
           invalidateCatalogCache();
+          maybeStartAiEnrichment(product.id, product);
           writeJson(response, 201, { product });
         } catch (error) {
           errorResponse(
@@ -684,6 +873,9 @@ export function createApp(options = {}) {
       };
       await store.createProduct(product);
       invalidateCatalogCache();
+      if (!product.summary && !product.description && !product.category) {
+        maybeStartAiEnrichment(product.id, product);
+      }
       writeJson(response, 201, { product });
       return;
     }
@@ -729,6 +921,47 @@ export function createApp(options = {}) {
         return;
       }
       writeJson(response, 200, { product: withAdminProductMeta(product) });
+      return;
+    }
+
+    if (
+      request.method === 'POST' &&
+      pathname.endsWith('/enrich-ai') &&
+      pathname.startsWith('/api/admin/products/')
+    ) {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      if (!canUseAiEnrichment()) {
+        errorResponse(
+          request,
+          response,
+          503,
+          'AI_ENRICHMENT_UNAVAILABLE',
+          'OpenAI não está configurada para enriquecer os produtos.'
+        );
+        return;
+      }
+      const productId = decodeURIComponent(pathname.split('/')[4] || '');
+      const product = await store.getProduct(productId);
+      if (!product) {
+        errorResponse(request, response, 404, 'PRODUCT_NOT_FOUND', 'Produto não encontrado.');
+        return;
+      }
+      if (!String(product.name || '').trim() || !collectProductImageUrls(product).length) {
+        errorResponse(
+          request,
+          response,
+          422,
+          'AI_ENRICHMENT_INPUT_INVALID',
+          'Este produto precisa ter nome e imagem para gerar descrição por IA.'
+        );
+        return;
+      }
+      const enrichment = startAiEnrichment(productId);
+      writeJson(response, 202, {
+        job: enrichment.job,
+        product: withAdminProductMeta(product),
+      });
       return;
     }
 

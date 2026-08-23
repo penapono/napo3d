@@ -29,6 +29,8 @@ Scripts disponíveis:
 - `pnpm dev:back`: sobe apenas a API, esperando PostgreSQL em `DATABASE_URL`
 - `pnpm docker:up`: sobe front, API e PostgreSQL com Docker Compose
 - `pnpm docker:down`: derruba a stack local
+- `OPENAI_API_KEY`: habilita o enriquecimento automático de descrição/categoria com IA após sync do MakerWorld
+- `OPENAI_PRODUCT_ENRICHMENT_MODEL`: modelo usado na Responses API para gerar texto e categoria a partir das imagens
 
 O front tenta encontrar a API nesta ordem:
 
@@ -62,6 +64,23 @@ CORS_ORIGINS=https://loja.exemplo.com,https://admin.exemplo.com pnpm dev:back
 - `script/deploy_production`: fluxo de deploy semelhante ao usado no ambiente Corus
 
 A API nao persiste mais em `.data/store.json`: os dados de usuarios, sessoes, enderecos, pedidos, itens, idempotencia e fila de e-mails ficam no PostgreSQL.
+
+### Enriquecimento por IA
+
+Quando `OPENAI_API_KEY` está configurada, produtos com nome e imagem podem ser enriquecidos pela OpenAI:
+
+- `summary`: descrição curta para o card do catálogo
+- `description`: descrição rica para o modal do produto
+- `category`: melhor categoria existente, ou uma nova quando necessário
+- `keywords`: termos úteis para busca interna
+
+O fluxo padrão é:
+
+1. sync do MakerWorld
+2. fila de enriquecimento por IA
+3. atualização do produto no PostgreSQL
+
+O admin também ganha um botão para reexecutar apenas o enriquecimento por IA sem reconsultar o MakerWorld.
 
 ## Observações
 

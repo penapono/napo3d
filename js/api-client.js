@@ -241,6 +241,10 @@ export const adminClient = {
     request(`/api/admin/products/${encodeURIComponent(id)}/refresh-makerworld`, {
       method: 'POST',
     }),
+  enrichProductAi: (id) =>
+    request(`/api/admin/products/${encodeURIComponent(id)}/enrich-ai`, {
+      method: 'POST',
+    }),
   updateProduct: (id, payload) =>
     request(`/api/admin/products/${encodeURIComponent(id)}`, {
       method: 'PATCH',

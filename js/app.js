@@ -27,6 +27,8 @@ const localImages = { 'Porta-copos': './assets/images/porta-copos.png' };
 
 const state = {
   items: [],
+  categories: [],
+  catalogTotal: 0,
   query: '',
   category: 'all',
   sort: 'recommended',
@@ -127,7 +129,7 @@ function visibleEntries() {
       const option = primaryProductOption(item);
       if (!query) return true;
       const haystack =
-        `${item.name} ${item.category} ${item.summary || ''} ${option?.name || ''} ${option?.colors || ''}`.toLowerCase();
+        `${item.name} ${item.category} ${item.summary || ''} ${item.description || ''} ${(item.keywords || []).join(' ')} ${option?.name || ''} ${option?.colors || ''}`.toLowerCase();
       return haystack.includes(query);
     }),
     state.sort
@@ -182,6 +184,7 @@ function card(item) {
   if (!option) return '';
   const description =
     item.summary ||
+    item.description ||
     copy[item.category] ||
     'Uma peça especial, feita para fazer parte da sua rotina.';
   const imageSource = productImage(item, option);
@@ -280,7 +283,7 @@ function openQuantityDialog(productId) {
   state.pendingItem = { item, option };
   const source = productImage(item, option);
   $('#quantity-title').textContent = item.name;
-  $('#quantity-description').textContent = item.summary || option.name || '';
+  $('#quantity-description').textContent = item.description || item.summary || option.name || '';
   $('#quantity-image').src = source.primary;
   $('#quantity-image').alt = item.name;
   renderQuantityGallery(option);
@@ -362,7 +365,9 @@ async function refreshSession() {
 
 async function loadProducts() {
   const result = await apiClient.getProducts({ limit: 200, sort: state.sort });
-  state.items = result.items;
+  state.items = Array.isArray(result.items) ? result.items : [];
+  state.categories = Array.isArray(result.categories) ? result.categories : [];
+  state.catalogTotal = Number(result.pagination?.total) || state.items.length;
 }
 
 async function loadUserData() {
@@ -386,15 +391,20 @@ async function loadUserData() {
 function renderCategories() {
   const node = $('#category-filters');
   if (!node) return;
-  const categories = [...new Set(state.items.map((item) => item.category).filter(Boolean))].sort(
-    (left, right) => left.localeCompare(right, 'pt-BR')
-  );
+  const categories = state.categories.length
+    ? state.categories
+    : [...new Set(state.items.map((item) => item.category).filter(Boolean))]
+        .sort((left, right) => left.localeCompare(right, 'pt-BR'))
+        .map((name) => ({
+          name,
+          count: state.items.filter((item) => item.category === name).length,
+        }));
   node.innerHTML =
-    '<button class="pill active" data-category="all">Tudo</button>' +
+    `<button class="pill${state.category === 'all' ? ' active' : ''}" data-category="all">Tudo (${text(state.catalogTotal)})</button>` +
     categories
       .map(
         (category) =>
-          `<button class="pill" data-category="${text(category)}">${text(category)}</button>`
+          `<button class="pill${state.category === category.name ? ' active' : ''}" data-category="${text(category.name)}">${text(category.name)} (${text(category.count)})</button>`
       )
       .join('');
   node.querySelectorAll('.pill').forEach((button) =>

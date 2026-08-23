@@ -83,13 +83,46 @@ function makerWorldRefreshTone(product) {
   return '';
 }
 
+function aiEnrichmentSummary(product) {
+  const enrichment = product.aiEnrichment;
+  if (!enrichment) {
+    return product.aiData?.generatedAt
+      ? `Descrição enriquecida por IA em ${formatDate(product.aiData.generatedAt)}.`
+      : '';
+  }
+  if (enrichment.status === 'queued') {
+    return 'Na fila para enriquecer descrição e categoria com IA...';
+  }
+  if (enrichment.status === 'running') {
+    return 'Gerando descrição e categoria com IA...';
+  }
+  if (enrichment.status === 'failed') {
+    return enrichment.error || 'Falha ao enriquecer este produto com IA.';
+  }
+  if (enrichment.status === 'succeeded') {
+    return `IA atualizada em ${formatDate(enrichment.finishedAt)}.`;
+  }
+  return '';
+}
+
+function aiEnrichmentTone(product) {
+  const enrichment = product.aiEnrichment;
+  if (!enrichment) return '';
+  if (enrichment.status === 'failed') return 'error';
+  if (enrichment.status === 'succeeded') return 'success';
+  return '';
+}
+
 function scheduleProductRefreshPoll() {
   clearTimeout(productRefreshPollTimer);
   if (
     state.activeTab !== 'products' ||
-    !state.products.some((product) =>
-      ['queued', 'running'].includes(product.makerworldRefresh?.status)
-    )
+    !state.products.some((product) => {
+      return (
+        ['queued', 'running'].includes(product.makerworldRefresh?.status) ||
+        ['queued', 'running'].includes(product.aiEnrichment?.status)
+      );
+    })
   ) {
     productRefreshPollTimer = null;
     return;
@@ -125,6 +158,7 @@ function openProductDialog(product = null) {
   form.elements.namedItem('category').value = product?.category || '';
   form.elements.namedItem('page').value = product?.page || '';
   form.elements.namedItem('summary').value = product?.summary || '';
+  form.elements.namedItem('description').value = product?.description || '';
   form.elements.namedItem('weight').value = option.weight || '';
   form.elements.namedItem('productionTime').value =
     option.productionTime || product?.productionTime || '';
@@ -142,6 +176,9 @@ function productRow(product) {
   const refresh = product.makerworldRefresh;
   const refreshSummary = makerWorldRefreshSummary(product);
   const refreshTone = makerWorldRefreshTone(product);
+  const enrichment = product.aiEnrichment;
+  const enrichmentSummary = aiEnrichmentSummary(product);
+  const enrichmentTone = aiEnrichmentTone(product);
   const rating =
     Number.isFinite(Number(option?.rating)) && Number(option.rating) > 0
       ? `${Number(option.rating).toFixed(1).replace('.', ',')}★`
@@ -156,9 +193,11 @@ function productRow(product) {
       <strong>${text(product.name)}</strong>
       <span>${text(product.category || 'Sem categoria')} · ${Number(option?.weight || 0)} g${rating ? ` · ${text(`${rating}${ratingCount}`)}` : ''}${text(makerWorldId)}</span>
       ${refreshSummary ? `<span class="admin-refresh-note" data-tone="${text(refreshTone)}">${text(refreshSummary)}</span>` : ''}
+      ${enrichmentSummary ? `<span class="admin-refresh-note" data-tone="${text(enrichmentTone)}">${text(enrichmentSummary)}</span>` : ''}
     </div>
     <div class="admin-list-row-actions">
       ${makerWorldCount ? `<button class="admin-icon-button${['queued', 'running'].includes(refresh?.status) ? ' is-loading' : ''}" data-product-refresh="${text(product.id)}" type="button" aria-label="Atualizar dados do MakerWorld" title="Atualizar dados do MakerWorld" ${['queued', 'running'].includes(refresh?.status) ? 'disabled' : ''}><i class="fa-solid fa-rotate-right" aria-hidden="true"></i></button>` : ''}
+      ${product.hasAiEnrichmentCandidate ? `<button class="admin-icon-button${['queued', 'running'].includes(enrichment?.status) ? ' is-loading' : ''}" data-product-enrich="${text(product.id)}" type="button" aria-label="Enriquecer descrição com IA" title="Enriquecer descrição com IA" ${['queued', 'running'].includes(enrichment?.status) ? 'disabled' : ''}><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i></button>` : ''}
       <button class="button button-secondary" data-product-edit="${text(product.id)}" type="button">Editar</button>
       <button class="button button-danger" data-product-delete="${text(product.id)}" type="button">Excluir</button>
     </div>
@@ -184,6 +223,18 @@ async function loadProducts() {
           alert(
             error.message || 'Não foi possível atualizar este produto com dados do MakerWorld.'
           );
+          button.disabled = false;
+        }
+      });
+    });
+    list.querySelectorAll('[data-product-enrich]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+          await adminClient.enrichProductAi(button.dataset.productEnrich);
+          await loadProducts();
+        } catch (error) {
+          alert(error.message || 'Não foi possível enriquecer este produto com IA.');
           button.disabled = false;
         }
       });
@@ -229,6 +280,7 @@ function bindProductEvents() {
         'category',
         'page',
         'summary',
+        'description',
         'weight',
         'productionTime',
         'colors',
@@ -245,6 +297,7 @@ function bindProductEvents() {
             ? Number(form.elements.namedItem('page').value)
             : undefined,
           summary: form.elements.namedItem('summary').value.trim(),
+          description: form.elements.namedItem('description').value.trim(),
           productionTime: form.elements.namedItem('productionTime').value
             ? Number(form.elements.namedItem('productionTime').value)
             : undefined,

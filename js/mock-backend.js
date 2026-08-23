@@ -4,7 +4,7 @@ import {
   sortProducts,
   validateAddressInput,
 } from '../shared/contract.js';
-import { flattenCatalogProducts } from '../shared/catalog.js';
+import { buildCategoryCounts, flattenCatalogProducts } from '../shared/catalog.js';
 
 const DB_KEY = 'napo3d-mock-db';
 
@@ -75,6 +75,7 @@ export function createMockBackend({ getToken, loadCatalog }) {
   return {
     async getProducts(params = {}) {
       const products = flattenCatalogProducts(await loadCatalog());
+      const categories = buildCategoryCounts(products);
       const query = String(params.query || '')
         .trim()
         .toLowerCase();
@@ -87,7 +88,7 @@ export function createMockBackend({ getToken, loadCatalog }) {
           const option = item.options?.[0];
           if (!query) return true;
           const haystack =
-            `${item.name} ${item.category} ${item.summary || ''} ${option?.name || ''} ${option?.colors || ''}`.toLowerCase();
+            `${item.name} ${item.category} ${item.summary || ''} ${item.description || ''} ${(item.keywords || []).join(' ')} ${option?.name || ''} ${option?.colors || ''}`.toLowerCase();
           return haystack.includes(query);
         }),
         params.sort || 'recommended'
@@ -97,6 +98,7 @@ export function createMockBackend({ getToken, loadCatalog }) {
       const start = (page - 1) * limit;
       return {
         items: filtered.slice(start, start + limit),
+        categories,
         pagination: { page, limit, total, totalPages },
       };
     },

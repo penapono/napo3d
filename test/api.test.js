@@ -490,6 +490,40 @@ test('admin can create, update, and delete a product; storefront sees the change
   assert.equal(afterDelete.response.status, 404);
 });
 
+test('public products response includes category counts and reflects new products', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+  const admin = await loginAsNewAdmin(app, 'admin-category-counts@example.com');
+
+  const before = await api(app, '/api/products?limit=200');
+  const beforeCasaCount = before.json.categories.find((entry) => entry.name === 'Casa')?.count || 0;
+
+  const create = await api(app, '/api/admin/products', {
+    method: 'POST',
+    headers: admin,
+    body: JSON.stringify({
+      name: 'Organizador de Mesa',
+      category: 'Casa',
+      summary: 'Ajuda a manter tudo no lugar.',
+      options: [
+        {
+          name: 'Única',
+          weight: 95,
+          imageUrl: 'https://example.com/organizador.webp',
+          score: 4,
+        },
+      ],
+    }),
+  });
+  assert.equal(create.response.status, 201);
+
+  const after = await api(app, '/api/products?limit=200');
+  const casa = after.json.categories.find((entry) => entry.name === 'Casa');
+  assert.ok(casa);
+  assert.equal(casa.count, beforeCasaCount + 1);
+  assert.ok(after.json.pagination.total >= before.json.pagination.total + 1);
+});
+
 test('admin product creation rejects a product with no options or invalid weight', async (t) => {
   const app = await startTestServer();
   t.after(() => app.close());
@@ -670,6 +704,135 @@ test('admin can create a product from only a MakerWorld URL', async (t) => {
     'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-2.webp',
     'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-3.webp',
   ]);
+});
+
+test('MakerWorld imports can auto-enrich summary, description, category, and keywords with AI', async (t) => {
+  const enrichCalls = [];
+  const app = await startTestServer({
+    openAiApiKey: 'test-key',
+    async scrapeMakerWorldModel(url) {
+      return {
+        url,
+        model_id: '1820511',
+        name: 'Organizador Poly-Desk',
+        image_urls: [
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-1.webp',
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-2.webp',
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-3.webp',
+        ],
+        best_profile: {
+          rating: 4.8,
+          rating_count: 93,
+          print_time: '16h 58m',
+          print_time_seconds: 61087,
+          weight_grams: 752,
+        },
+      };
+    },
+    async enrichProductWithAi(product, categories) {
+      enrichCalls.push({ product, categories });
+      return {
+        summary: 'Um organizador inteligente para mesa e escritório.',
+        description:
+          'Mantém acessórios, cabos e pequenos objetos em ordem com um visual limpo. Ideal para mesas de trabalho, estudo e home office.',
+        category: 'Escritório',
+        keywords: ['organizador de mesa', 'home office', 'cabos'],
+        aiData: {
+          provider: 'openai',
+          model: 'gpt-test',
+          generatedAt: '2026-08-23T00:00:00.000Z',
+          confidence: 0.92,
+          tags: ['organizador de mesa', 'home office', 'cabos'],
+          lastError: '',
+        },
+      };
+    },
+  });
+  t.after(() => app.close());
+  const admin = await loginAsNewAdmin(app, 'admin-ai-enrichment@example.com');
+
+  const create = await api(app, '/api/admin/products', {
+    method: 'POST',
+    headers: admin,
+    body: JSON.stringify({
+      options: [{ url: 'https://makerworld.com/en/models/1820511-poly-desk-organizer' }],
+    }),
+  });
+  assert.equal(create.response.status, 201);
+
+  let detail = null;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    detail = await api(app, `/api/admin/products/${create.json.product.id}`, { headers: admin });
+    if (!['queued', 'running'].includes(detail.json.product.aiEnrichment?.status)) break;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  assert.equal(enrichCalls.length, 1);
+  assert.ok(enrichCalls[0].categories.includes('Escritório'));
+  assert.equal(detail.json.product.aiEnrichment.status, 'succeeded');
+  assert.equal(detail.json.product.summary, 'Um organizador inteligente para mesa e escritório.');
+  assert.match(detail.json.product.description, /Mantém acessórios/);
+  assert.equal(detail.json.product.category, 'Escritório');
+  assert.deepEqual(detail.json.product.keywords, ['organizador de mesa', 'home office', 'cabos']);
+  assert.equal(detail.json.product.aiData.model, 'gpt-test');
+  assert.equal(detail.json.product.aiData.confidence, 0.92);
+});
+
+test('admin can manually enqueue AI enrichment for an existing product', async (t) => {
+  const app = await startTestServer({
+    openAiApiKey: 'test-key',
+    async enrichProductWithAi() {
+      return {
+        summary: 'Uma peça útil para o dia a dia.',
+        description: 'Resolve uma necessidade prática com um visual leve e contemporâneo.',
+        category: 'Utilitário',
+        keywords: ['utilitário', 'organização', 'mesa'],
+        aiData: {
+          provider: 'openai',
+          model: 'gpt-test',
+          generatedAt: '2026-08-23T00:00:00.000Z',
+          confidence: 0.81,
+          tags: ['utilitário', 'organização', 'mesa'],
+          lastError: '',
+        },
+      };
+    },
+  });
+  t.after(() => app.close());
+  const admin = await loginAsNewAdmin(app, 'admin-ai-manual@example.com');
+
+  const create = await api(app, '/api/admin/products', {
+    method: 'POST',
+    headers: admin,
+    body: JSON.stringify({
+      name: 'Suporte Modular',
+      options: [
+        {
+          name: 'Única',
+          weight: 84,
+          imageUrl: 'https://example.com/suporte.webp',
+        },
+      ],
+    }),
+  });
+  assert.equal(create.response.status, 201);
+
+  const enrich = await api(app, `/api/admin/products/${create.json.product.id}/enrich-ai`, {
+    method: 'POST',
+    headers: admin,
+  });
+  assert.equal(enrich.response.status, 202);
+
+  let detail = null;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    detail = await api(app, `/api/admin/products/${create.json.product.id}`, { headers: admin });
+    if (!['queued', 'running'].includes(detail.json.product.aiEnrichment?.status)) break;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  assert.equal(detail.json.product.aiEnrichment.status, 'succeeded');
+  assert.equal(detail.json.product.category, 'Utilitário');
+  assert.equal(detail.json.product.summary, 'Uma peça útil para o dia a dia.');
 });
 
 test('MakerWorld URL-only imports are queued with a minimum interval between scrapes', async (t) => {
