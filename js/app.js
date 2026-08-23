@@ -573,6 +573,44 @@ function renderStorePage() {
   renderShippingPage();
 }
 
+function bindSearchBox() {
+  const searchBox = $('#search-box');
+  const searchInput = $('#search');
+  const searchToggle = $('#search-toggle');
+  if (!searchBox || !searchInput || !searchToggle) return;
+
+  const openSearch = () => {
+    searchBox.classList.add('is-open');
+  };
+
+  const closeSearch = () => {
+    if (searchInput.value.trim()) return;
+    searchBox.classList.remove('is-open');
+  };
+
+  searchToggle.addEventListener('click', () => {
+    openSearch();
+    searchInput.focus();
+  });
+
+  searchInput.addEventListener('focus', openSearch);
+  searchInput.addEventListener('blur', () => {
+    window.setTimeout(() => {
+      if (!searchBox.contains(document.activeElement)) closeSearch();
+    }, 0);
+  });
+  searchInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    searchInput.blur();
+    closeSearch();
+  });
+
+  document.addEventListener('click', (event) => {
+    if (searchBox.contains(event.target)) return;
+    closeSearch();
+  });
+}
+
 function bindEvents() {
   $('#search')?.addEventListener('input', (event) => {
     state.query = event.target.value;
@@ -766,6 +804,7 @@ async function init() {
   renderCategories();
   renderCatalog();
   renderCart();
+  bindSearchBox();
   renderHeader();
   bindEvents();
   renderStorePage();
