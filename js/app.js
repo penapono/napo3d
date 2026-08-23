@@ -108,6 +108,10 @@ const VALID_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function formatDuration(minutes) {
   const total = Math.max(0, Math.round(minutes));
+  if (total >= 1440) {
+    const days = Math.ceil(total / 1440);
+    return `${days} ${days === 1 ? 'dia' : 'dias'}`;
+  }
   const days = Math.floor(total / 1440);
   const hours = Math.floor((total % 1440) / 60);
   const mins = total % 60;
@@ -586,7 +590,7 @@ function updateQuantityPreview() {
     ) || 0;
   $('#quantity-unit-price').textContent = money(unitPrice);
   $('#quantity-total-price').textContent = `Total: ${money(unitPrice * quantity)}`;
-  $('#quantity-production-time').textContent = `Produção estimada: ${formatDuration(
+  $('#quantity-production-time').textContent = `Produção + tempo de envio: ${formatDuration(
     lineProductionMinutes(state.pendingItem.item, quantity, state.pendingItem.option)
   )}`;
 }
@@ -674,7 +678,7 @@ function renderOrders() {
     ? state.orders
         .map(
           (order) =>
-            `<article class="info-card"><strong>Pedido ${text(order.id)}</strong><span>Status: ${text(order.status)}</span><span>${new Date(order.createdAt).toLocaleString('pt-BR')}</span><span>Total ${money(order.total)}</span><span>Produção ${formatDuration(Number(order.productionEstimateHours || 0) * 60)}</span></article>`
+            `<article class="info-card"><strong>Pedido ${text(order.id)}</strong><span>Status: ${text(order.status)}</span><span>${new Date(order.createdAt).toLocaleString('pt-BR')}</span><span>Total ${money(order.total)}</span><span>Produção + envio ${formatDuration(Number(order.productionEstimateHours || 0) * 60)}</span></article>`
         )
         .join('')
     : '<p class="empty-state-inline">Nenhum pedido salvo ainda.</p>';
