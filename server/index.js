@@ -216,6 +216,7 @@ export function createApp(options = {}) {
     return {
       ...product,
       hasMakerWorldOptions: hasMakerWorldOptions(product),
+      aiEnrichmentEnabled: canUseAiEnrichment(),
       makerworldRefresh: serializeMakerWorldJob(makerWorldRefreshJobs.get(product.id)),
       hasAiEnrichmentCandidate: Boolean(
         String(product?.name || '').trim() && collectProductImageUrls(product).length

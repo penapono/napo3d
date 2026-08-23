@@ -53,9 +53,14 @@ function makerWorldOptionCount(product) {
 
 function makerWorldRefreshSummary(product) {
   const refresh = product.makerworldRefresh;
+  const option = primaryProductOption(product) || {};
   if (!refresh) {
     const count = makerWorldOptionCount(product);
-    return count ? `${count} URL(s) do MakerWorld disponíveis para atualização.` : '';
+    if (!count) return '';
+    if (option?.makerworldSyncedAt) {
+      return `MakerWorld sincronizado em ${formatDate(option.makerworldSyncedAt)}.`;
+    }
+    return 'MakerWorld disponível para sincronização.';
   }
   if (refresh.status === 'queued') {
     return 'Na fila para atualizar dados do MakerWorld...';
@@ -77,7 +82,8 @@ function makerWorldRefreshSummary(product) {
 
 function makerWorldRefreshTone(product) {
   const refresh = product.makerworldRefresh;
-  if (!refresh) return '';
+  const option = primaryProductOption(product) || {};
+  if (!refresh) return option?.makerworldSyncedAt ? 'success' : '';
   if (refresh.status === 'failed') return 'error';
   if (refresh.status === 'succeeded') return 'success';
   return '';
@@ -156,7 +162,6 @@ function openProductDialog(product = null) {
   const option = primaryProductOption(product) || {};
   form.elements.namedItem('name').value = product?.name || '';
   form.elements.namedItem('category').value = product?.category || '';
-  form.elements.namedItem('page').value = product?.page || '';
   form.elements.namedItem('summary').value = product?.summary || '';
   form.elements.namedItem('description').value = product?.description || '';
   form.elements.namedItem('weight').value = option.weight || '';
@@ -197,7 +202,7 @@ function productRow(product) {
     </div>
     <div class="admin-list-row-actions">
       ${makerWorldCount ? `<button class="admin-icon-button${['queued', 'running'].includes(refresh?.status) ? ' is-loading' : ''}" data-product-refresh="${text(product.id)}" type="button" aria-label="Atualizar dados do MakerWorld" title="Atualizar dados do MakerWorld" ${['queued', 'running'].includes(refresh?.status) ? 'disabled' : ''}><i class="fa-solid fa-rotate-right" aria-hidden="true"></i></button>` : ''}
-      ${product.hasAiEnrichmentCandidate ? `<button class="admin-icon-button${['queued', 'running'].includes(enrichment?.status) ? ' is-loading' : ''}" data-product-enrich="${text(product.id)}" type="button" aria-label="Enriquecer descrição com IA" title="Enriquecer descrição com IA" ${['queued', 'running'].includes(enrichment?.status) ? 'disabled' : ''}><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i></button>` : ''}
+      ${product.aiEnrichmentEnabled && product.hasAiEnrichmentCandidate ? `<button class="admin-icon-button${['queued', 'running'].includes(enrichment?.status) ? ' is-loading' : ''}" data-product-enrich="${text(product.id)}" type="button" aria-label="Enriquecer descrição com IA" title="Enriquecer descrição com IA" ${['queued', 'running'].includes(enrichment?.status) ? 'disabled' : ''}><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i></button>` : ''}
       <button class="button button-secondary" data-product-edit="${text(product.id)}" type="button">Editar</button>
       <button class="button button-danger" data-product-delete="${text(product.id)}" type="button">Excluir</button>
     </div>
@@ -278,7 +283,6 @@ function bindProductEvents() {
       ![
         'name',
         'category',
-        'page',
         'summary',
         'description',
         'weight',
@@ -293,9 +297,6 @@ function bindProductEvents() {
       : {
           name: optionName,
           category: form.elements.namedItem('category').value.trim(),
-          page: form.elements.namedItem('page').value
-            ? Number(form.elements.namedItem('page').value)
-            : undefined,
           summary: form.elements.namedItem('summary').value.trim(),
           description: form.elements.namedItem('description').value.trim(),
           productionTime: form.elements.namedItem('productionTime').value
