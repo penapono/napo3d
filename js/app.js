@@ -251,6 +251,13 @@ function ratingMarkup(option) {
   return `<div class="product-rating" aria-label="Avaliação ${text(ratingLabel)} de 5 com ${text(countLabel)}"><span class="product-rating-stars" style="--rating-width:${text(width)}"><span aria-hidden="true">★★★★★</span></span><span class="product-rating-value">${text(ratingLabel)}</span>${Number.isFinite(ratingCount) && ratingCount > 0 ? `<span class="product-rating-count">(${text(ratingCount.toLocaleString('pt-BR'))})</span>` : ''}</div>`;
 }
 
+function cardAction(item, option) {
+  if (state.me?.role === 'admin' && option?.url) {
+    return `<a class="quote-button add-to-cart icon-action" href="${text(option.url)}" target="_blank" rel="noreferrer noopener" aria-label="Abrir ${text(item.name)} no MakerWorld" title="Abrir no MakerWorld"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i><span class="sr-only">Abrir no MakerWorld</span></a>`;
+  }
+  return `<button class="quote-button add-to-cart icon-action" type="button" data-product-id="${text(item.id)}" aria-label="Adicionar ${text(item.name)} ao carrinho" title="Adicionar ao carrinho"><i class="fa-solid fa-cart-plus" aria-hidden="true"></i><span class="sr-only">Adicionar ao carrinho</span></button>`;
+}
+
 function card(item) {
   const option = primaryProductOption(item);
   if (!option) return '';
@@ -270,7 +277,7 @@ function card(item) {
         `<div class="tier-price"><span>${tier.label}</span><strong>${money(unitPriceFromWeight(weightInGrams(option), tier.quantity))}</strong><small>por peça</small></div>`
     )
     .join('');
-  return `<article class="product-card"><div class="product-image">${image(imageSource.primary, item.name, imageSource.fallback)}<span class="product-tag">${text(item.category)}</span></div><div class="product-info"><h3>${text(item.name)}</h3>${ratingMarkup(option)}<p class="variant-name">${text(description)}</p><div class="tier-prices" aria-label="Preços por quantidade">${tierPrices}</div><button class="quote-button add-to-cart icon-action" type="button" data-product-id="${text(item.id)}" aria-label="Adicionar ${text(item.name)} ao carrinho" title="Adicionar ao carrinho"><i class="fa-solid fa-cart-plus" aria-hidden="true"></i><span class="sr-only">Adicionar ao carrinho</span></button></div></article>`;
+  return `<article class="product-card"><div class="product-image">${image(imageSource.primary, item.name, imageSource.fallback)}<span class="product-tag">${text(item.category)}</span></div><div class="product-info"><h3>${text(item.name)}</h3>${ratingMarkup(option)}<p class="variant-name">${text(description)}</p><div class="tier-prices" aria-label="Preços por quantidade">${tierPrices}</div>${cardAction(item, option)}</div></article>`;
 }
 
 async function refreshCatalog() {
