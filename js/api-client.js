@@ -237,6 +237,10 @@ export const adminClient = {
   listProducts: () => request('/api/admin/products'),
   createProduct: (payload) =>
     request('/api/admin/products', { method: 'POST', body: JSON.stringify(payload) }),
+  refreshProductMakerWorld: (id) =>
+    request(`/api/admin/products/${encodeURIComponent(id)}/refresh-makerworld`, {
+      method: 'POST',
+    }),
   updateProduct: (id, payload) =>
     request(`/api/admin/products/${encodeURIComponent(id)}`, {
       method: 'PATCH',

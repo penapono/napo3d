@@ -100,7 +100,8 @@ function redirect(page, params = {}) {
 
 function productImage(item, option) {
   const local = localImages[item.name.trim()];
-  const candidate = option.imageUrl || item.reference;
+  const galleryPrimary = Array.isArray(option.imageGallery) ? option.imageGallery[0] : '';
+  const candidate = option.imageUrl || galleryPrimary || item.reference;
   const candidateIsLocal = candidate && candidate.startsWith('assets/images/');
   return {
     primary: local || candidate,
@@ -160,7 +161,7 @@ function cartLine(entry) {
     label: `${item.name} — ${option.name}`,
     unitPrice,
     lineTotal: unitPrice * entry.quantity,
-    productionMinutes: lineProductionMinutes(item, entry.quantity),
+    productionMinutes: lineProductionMinutes(item, entry.quantity, option),
   };
 }
 
@@ -279,9 +280,36 @@ function openQuantityDialog(productId, optionName) {
   $('#quantity-description').textContent = option.name;
   $('#quantity-image').src = source.primary;
   $('#quantity-image').alt = `${item.name} — ${option.name}`;
+  renderQuantityGallery(option);
   $('#quantity-input').value = 1;
   updateQuantityPreview();
   $('#quantity-dialog').showModal();
+}
+
+function renderQuantityGallery(option) {
+  const node = $('#quantity-gallery');
+  if (!node) return;
+  const gallery = Array.isArray(option?.imageGallery) ? option.imageGallery.filter(Boolean) : [];
+  if (gallery.length <= 1) {
+    node.hidden = true;
+    node.innerHTML = '';
+    return;
+  }
+  node.hidden = false;
+  node.innerHTML = gallery
+    .map(
+      (url, index) =>
+        `<button class="quantity-gallery-thumb${index === 0 ? ' is-active' : ''}" type="button" data-quantity-image="${text(url)}" aria-label="Ver imagem ${index + 1}"><img src="${text(url)}" alt="Imagem ${index + 1} da peça" loading="lazy" /></button>`
+    )
+    .join('');
+  node.querySelectorAll('[data-quantity-image]').forEach((button) => {
+    button.addEventListener('click', () => {
+      node
+        .querySelectorAll('.quantity-gallery-thumb')
+        .forEach((thumb) => thumb.classList.toggle('is-active', thumb === button));
+      $('#quantity-image').src = button.dataset.quantityImage;
+    });
+  });
 }
 
 function updateQuantityPreview() {
@@ -291,8 +319,9 @@ function updateQuantityPreview() {
   const unitPrice = unitPriceFromWeight(weightInGrams(state.pendingItem.option), quantity) || 0;
   $('#quantity-unit-price').textContent = money(unitPrice);
   $('#quantity-total-price').textContent = `Total: ${money(unitPrice * quantity)}`;
-  $('#quantity-production-time').textContent =
-    `Produção estimada: ${formatDuration(lineProductionMinutes(state.pendingItem.item, quantity))}`;
+  $('#quantity-production-time').textContent = `Produção estimada: ${formatDuration(
+    lineProductionMinutes(state.pendingItem.item, quantity, state.pendingItem.option)
+  )}`;
 }
 
 function addToCart(productId, optionName, quantity) {
@@ -392,6 +421,8 @@ function renderAccountPage() {
   if (currentPage() !== 'account') return;
   $('#backend-badge').textContent =
     state.backendMode === 'live' ? 'Backend ativo' : 'Modo mock local';
+  const authControls = $('#account-auth-controls');
+  const modeLabel = $('#account-mode-label');
   document.querySelectorAll('[data-auth-mode]').forEach((button) => {
     button.classList.toggle('is-active', button.dataset.authMode === state.authMode);
   });
@@ -400,11 +431,13 @@ function renderAccountPage() {
   const actions = $('#account-actions');
   const nameField = $('#account-name-field');
   const nameInput = document.querySelector('[name="accountName"]');
-  $('#account-mode-label').textContent =
+  modeLabel.textContent =
     state.authMode === 'register'
       ? 'Crie sua conta para salvar pedidos e endereços.'
       : 'Entre para concluir a compra e acompanhar seus pedidos.';
   if (state.me) {
+    authControls.hidden = true;
+    modeLabel.hidden = true;
     form.hidden = true;
     summary.hidden = false;
     actions.hidden = false;
@@ -424,6 +457,8 @@ function renderAccountPage() {
       setStatus('#account-page-status', 'Sessão encerrada.');
     };
   } else {
+    authControls.hidden = false;
+    modeLabel.hidden = false;
     form.hidden = false;
     summary.hidden = true;
     actions.hidden = true;

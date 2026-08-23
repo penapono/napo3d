@@ -9,6 +9,7 @@ x-api-environment: &api-environment
   RESEND_API_KEY: ${RESEND_API_KEY}
   FROM_EMAIL: ${FROM_EMAIL}
   ORDER_RECIPIENT: ${ORDER_RECIPIENT}
+  MAKERWORLD_SCRAPER_URL: ${MAKERWORLD_SCRAPER_URL:-http://makerworld-scraper:8010}
 
 services:
   api:
@@ -20,8 +21,19 @@ services:
       <<: *api-environment
     networks:
       - corus
+    depends_on:
+      makerworld-scraper:
+        condition: service_started
     ports:
       - "127.0.0.1:3501:3001"
+
+  makerworld-scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile.makerworld
+    restart: unless-stopped
+    networks:
+      - corus
 
   front:
     build:

@@ -609,6 +609,33 @@ a {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 24px;
 }
+.quantity-gallery {
+  display: flex;
+  gap: 10px;
+  margin: -6px 0 18px;
+}
+.quantity-gallery-thumb {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+.quantity-gallery-thumb:hover,
+.quantity-gallery-thumb.is-active {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.quantity-gallery-thumb img {
+  display: block;
+  height: 64px;
+  object-fit: cover;
+  width: 64px;
+}
 .quantity-label {
   display: grid;
   font-size: 13px;

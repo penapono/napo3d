@@ -6,10 +6,11 @@ import { createApp } from '../server/index.js';
 import { createMemoryStore } from '../server/store.js';
 import { buildQuote } from '../shared/contract.js';
 
-async function startTestServer() {
+async function startTestServer(options = {}) {
   const app = createApp({
     rootDir: path.resolve(path.join(path.dirname(fileURLToPath(import.meta.url)), '..')),
     store: createMemoryStore(),
+    ...options,
   });
   app.promoteToAdmin = async (email) => {
     await app.store.update((nextStore) => {
@@ -52,7 +53,7 @@ test('buildQuote applies the correct pricing tiers', async () => {
     id: 'demo',
     name: 'Produto Demo',
     productionTime: 60,
-    options: [{ name: 'Laranja', weight: 40 }],
+    options: [{ name: 'Laranja', weight: 40, productionTime: 90 }],
   };
   const quote = buildQuote(
     [
@@ -66,7 +67,8 @@ test('buildQuote applies the correct pricing tiers', async () => {
   assert.equal(quote.items[0].unitPrice, 15);
   assert.equal(quote.items[1].unitPrice, 13);
   assert.equal(quote.items[2].unitPrice, 11);
-  assert.equal(quote.productionEstimateHours, 22);
+  assert.equal(quote.items[0].productionTimeMinutes, 90);
+  assert.equal(quote.productionEstimateHours, 33);
 });
 
 test('register, login and fetch me', async (t) => {
@@ -526,6 +528,116 @@ test('a customer cannot create, update, or delete products', async (t) => {
     body: JSON.stringify({ name: 'x', options: [{ name: 'x', weight: 1 }] }),
   });
   assert.equal(create.response.status, 403);
+});
+
+test('admin can trigger a MakerWorld refresh and persist scraped option fields', async (t) => {
+  const app = await startTestServer({
+    async scrapeMakerWorldModel(url) {
+      return {
+        url,
+        model_id: '2838224',
+        description: 'Modelo sincronizado do MakerWorld.',
+        image_urls: [
+          'https://makerworld.bblmw.com/makerworld/user/demo/avatar.webp',
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/example-1.webp',
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/example-2.webp',
+          'https://makerworld.bblmw.com/makerworld/static/license.webp',
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/example-3.webp',
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/example-4.webp',
+        ],
+        best_profile: {
+          rating: 4.9,
+          rating_count: 37,
+          print_time: '2h',
+          print_time_seconds: 7200,
+          weight_grams: 84,
+        },
+      };
+    },
+  });
+  t.after(() => app.close());
+  const admin = await loginAsNewAdmin(app, 'admin-makerworld@example.com');
+
+  const create = await api(app, '/api/admin/products', {
+    method: 'POST',
+    headers: admin,
+    body: JSON.stringify({
+      name: 'Porta cartões',
+      options: [
+        {
+          name: 'Business Card Holder',
+          url: 'https://makerworld.com/en/models/2838224-airplane-business-card-holder-a320-airbus',
+          weight: 42,
+        },
+      ],
+    }),
+  });
+  const productId = create.json.product.id;
+
+  const refresh = await api(app, `/api/admin/products/${productId}/refresh-makerworld`, {
+    method: 'POST',
+    headers: admin,
+  });
+  assert.equal(refresh.response.status, 202);
+  assert.equal(refresh.json.job.status, 'running');
+
+  let detail = null;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    detail = await api(app, `/api/admin/products/${productId}`, { headers: admin });
+    if (detail.json.product.makerworldRefresh?.status !== 'running') break;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  assert.equal(detail.json.product.makerworldRefresh.status, 'succeeded');
+  assert.equal(
+    detail.json.product.options[0].url,
+    'https://makerworld.com/pt/models/2838224-airplane-business-card-holder-a320-airbus'
+  );
+  assert.equal(
+    detail.json.product.options[0].imageUrl,
+    'https://makerworld.bblmw.com/makerworld/model/demo/design/example-1.webp'
+  );
+  assert.deepEqual(detail.json.product.options[0].imageGallery, [
+    'https://makerworld.bblmw.com/makerworld/model/demo/design/example-1.webp',
+    'https://makerworld.bblmw.com/makerworld/model/demo/design/example-2.webp',
+    'https://makerworld.bblmw.com/makerworld/model/demo/design/example-3.webp',
+  ]);
+  assert.equal(detail.json.product.options[0].time, '2h');
+  assert.equal(detail.json.product.options[0].rating, '4.9 (37)');
+  assert.equal(detail.json.product.options[0].weight, 84);
+  assert.equal(detail.json.product.options[0].thumb, detail.json.product.options[0].imageUrl);
+  assert.equal(detail.json.product.options[0].makerworldModelId, '2838224');
+  assert.equal(detail.json.product.options[0].makerworldLastError, '');
+  assert.equal(detail.json.product.reference, detail.json.product.options[0].imageUrl);
+  assert.equal(detail.json.product.summary, 'Modelo sincronizado do MakerWorld.');
+  assert.equal(detail.json.product.options[0].productionTime, 120);
+  assert.equal(detail.json.product.productionTime, 120);
+});
+
+test('admin MakerWorld refresh rejects products without a MakerWorld URL', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+  const admin = await loginAsNewAdmin(app, 'admin-makerworld-missing@example.com');
+
+  const create = await api(app, '/api/admin/products', {
+    method: 'POST',
+    headers: admin,
+    body: JSON.stringify({
+      name: 'Produto local',
+      options: [{ name: 'Única', weight: 10 }],
+    }),
+  });
+
+  const refresh = await api(
+    app,
+    `/api/admin/products/${create.json.product.id}/refresh-makerworld`,
+    {
+      method: 'POST',
+      headers: admin,
+    }
+  );
+  assert.equal(refresh.response.status, 422);
+  assert.equal(refresh.json.error.code, 'NO_MAKERWORLD_SOURCE');
 });
 
 test('admin can list every order across all customers and view one in detail', async (t) => {

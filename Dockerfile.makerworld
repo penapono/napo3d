@@ -1,0 +1,15 @@
+FROM python:3.13-slim
+
+WORKDIR /app/makerworld_scraper
+
+COPY makerworld_scraper/requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY makerworld_scraper ./
+
+ENV MAKERWORLD_SCRAPER_HOST=0.0.0.0 \
+    MAKERWORLD_SCRAPER_PORT=8010
+
+EXPOSE 8010
+
+CMD ["python", "service.py"]

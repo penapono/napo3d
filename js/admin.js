@@ -32,6 +32,7 @@ const state = {
   editingOrderId: null,
   editingUserId: null,
 };
+let productRefreshPollTimer = null;
 
 function setStatus(selector, message, tone = '') {
   const node = $(selector);
@@ -44,8 +45,59 @@ function formatDate(value) {
   return new Date(value).toLocaleString('pt-BR');
 }
 
+function makerWorldOptionCount(product) {
+  return (product.options || []).filter((option) =>
+    /https?:\/\/(?:www\.)?makerworld\.com\//i.test(option?.url || '')
+  ).length;
+}
+
+function makerWorldRefreshSummary(product) {
+  const refresh = product.makerworldRefresh;
+  if (!refresh) {
+    const count = makerWorldOptionCount(product);
+    return count ? `${count} URL(s) do MakerWorld disponíveis para atualização.` : '';
+  }
+  if (refresh.status === 'running') {
+    const progress = refresh.totalCount
+      ? ` ${refresh.successCount + refresh.failureCount}/${refresh.totalCount}`
+      : '';
+    return `Atualizando dados do MakerWorld${progress}...`;
+  }
+  if (refresh.status === 'failed') {
+    return refresh.error || 'Falha ao atualizar dados do MakerWorld.';
+  }
+  if (refresh.status === 'succeeded') {
+    return `MakerWorld atualizado em ${formatDate(refresh.finishedAt)}.`;
+  }
+  return '';
+}
+
+function makerWorldRefreshTone(product) {
+  const refresh = product.makerworldRefresh;
+  if (!refresh) return '';
+  if (refresh.status === 'failed') return 'error';
+  if (refresh.status === 'succeeded') return 'success';
+  return '';
+}
+
+function scheduleProductRefreshPoll() {
+  clearTimeout(productRefreshPollTimer);
+  if (
+    state.activeTab !== 'products' ||
+    !state.products.some((product) => product.makerworldRefresh?.status === 'running')
+  ) {
+    productRefreshPollTimer = null;
+    return;
+  }
+  productRefreshPollTimer = setTimeout(() => {
+    loadProducts().catch(() => null);
+  }, 2000);
+}
+
 function switchTab(tab) {
   state.activeTab = tab;
+  clearTimeout(productRefreshPollTimer);
+  productRefreshPollTimer = null;
   document.querySelectorAll('[data-admin-tab]').forEach((button) => {
     button.classList.toggle('is-active', button.dataset.adminTab === tab);
   });
@@ -58,8 +110,15 @@ function switchTab(tab) {
 }
 
 function optionRowValues(row) {
+  let original = {};
+  try {
+    original = JSON.parse(row.dataset.optionOriginal || '{}');
+  } catch {
+    original = {};
+  }
   const field = (name) => row.querySelector(`[data-option-field="${name}"]`)?.value || '';
   return {
+    ...original,
     name: field('name'),
     weight: Number(field('weight')),
     colors: field('colors'),
@@ -72,6 +131,7 @@ function optionRowValues(row) {
 function addOptionRow(option = {}) {
   const template = $('#admin-option-row-template');
   const clone = template.content.firstElementChild.cloneNode(true);
+  clone.dataset.optionOriginal = JSON.stringify(option || {});
   Object.entries(option).forEach(([key, value]) => {
     const field = clone.querySelector(`[data-option-field="${key}"]`);
     if (field) field.value = value ?? '';
@@ -99,12 +159,18 @@ function openProductDialog(product = null) {
 
 function productRow(product) {
   const optionCount = (product.options || []).length;
+  const makerWorldCount = makerWorldOptionCount(product);
+  const refresh = product.makerworldRefresh;
+  const refreshSummary = makerWorldRefreshSummary(product);
+  const refreshTone = makerWorldRefreshTone(product);
   return `<article class="admin-list-row">
     <div class="admin-list-row-info">
       <strong>${text(product.name)}</strong>
       <span>${text(product.category || 'Sem categoria')} · ${optionCount} variação(ões)</span>
+      ${refreshSummary ? `<span class="admin-refresh-note" data-tone="${text(refreshTone)}">${text(refreshSummary)}</span>` : ''}
     </div>
     <div class="admin-list-row-actions">
+      ${makerWorldCount ? `<button class="admin-icon-button${refresh?.status === 'running' ? ' is-loading' : ''}" data-product-refresh="${text(product.id)}" type="button" aria-label="Atualizar dados do MakerWorld" title="Atualizar dados do MakerWorld" ${refresh?.status === 'running' ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0 2 5.3"/><path d="M20 4v7h-7"/></svg></button>` : ''}
       <button class="button button-secondary" data-product-edit="${text(product.id)}" type="button">Editar</button>
       <button class="button button-danger" data-product-delete="${text(product.id)}" type="button">Excluir</button>
     </div>
@@ -120,6 +186,20 @@ async function loadProducts() {
     list.innerHTML = state.products.length
       ? state.products.map(productRow).join('')
       : '<p class="empty-state-inline">Nenhum produto cadastrado ainda.</p>';
+    list.querySelectorAll('[data-product-refresh]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+          await adminClient.refreshProductMakerWorld(button.dataset.productRefresh);
+          await loadProducts();
+        } catch (error) {
+          alert(
+            error.message || 'Não foi possível atualizar este produto com dados do MakerWorld.'
+          );
+          button.disabled = false;
+        }
+      });
+    });
     list.querySelectorAll('[data-product-edit]').forEach((button) => {
       button.addEventListener('click', () => {
         openProductDialog(
@@ -137,6 +217,8 @@ async function loadProducts() {
     });
   } catch (error) {
     list.innerHTML = `<p class="empty-state-inline">${text(error.message || 'Não foi possível carregar os produtos.')}</p>`;
+  } finally {
+    scheduleProductRefreshPoll();
   }
 }
 

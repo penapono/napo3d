@@ -52,6 +52,11 @@ export function normalizeOptionalText(value) {
   return trimmed || undefined;
 }
 
+export function normalizeOptionalTextList(values) {
+  if (!Array.isArray(values)) return [];
+  return values.map(normalizeOptionalText).filter(Boolean);
+}
+
 export function normalizeRequiredText(value) {
   return String(value || '').trim();
 }
@@ -111,6 +116,7 @@ export function normalizeProductOptionInput(option = {}) {
     name: normalizeRequiredText(option.name),
     url: normalizeOptionalText(option.url),
     imageUrl: normalizeOptionalText(option.imageUrl),
+    imageGallery: normalizeOptionalTextList(option.imageGallery),
     source: normalizeOptionalText(option.source),
     dims: normalizeOptionalText(option.dims),
     time: normalizeOptionalText(option.time),
@@ -127,6 +133,12 @@ export function normalizeProductOptionInput(option = {}) {
     cost: Number.isFinite(Number(option.cost)) ? Number(option.cost) : undefined,
     thumb: normalizeOptionalText(option.thumb),
     free: Boolean(option.free),
+    makerworldModelId: normalizeOptionalText(option.makerworldModelId),
+    makerworldSyncedAt: normalizeOptionalText(option.makerworldSyncedAt),
+    makerworldLastError: normalizeOptionalText(option.makerworldLastError),
+    productionTime: Number.isFinite(Number(option.productionTime))
+      ? Number(option.productionTime)
+      : undefined,
   };
 }
 
@@ -164,6 +176,9 @@ export function validateProductInput(product = {}) {
       reference: normalizeOptionalText(product.reference) || '',
       summary: normalizeOptionalText(product.summary) || '',
       page: Number.isFinite(Number(product.page)) ? Number(product.page) : undefined,
+      productionTime: Number.isFinite(Number(product.productionTime))
+        ? Number(product.productionTime)
+        : undefined,
       options,
     },
   };
@@ -185,13 +200,15 @@ export function unitPriceFromWeight(weight, quantity) {
   return Math.round((weight * resolvePriceTier(quantity).rate) / 1000);
 }
 
-export function productionTimeMinutes(product) {
+export function productionTimeMinutes(product, option) {
+  const optionMinutes = Number(option?.productionTime);
+  if (Number.isFinite(optionMinutes) && optionMinutes > 0) return optionMinutes;
   const minutes = Number(product?.productionTime);
   return Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_PRODUCTION_TIME_MINUTES;
 }
 
-export function lineProductionMinutes(product, quantity) {
-  return (productionTimeMinutes(product) * quantity) / 10;
+export function lineProductionMinutes(product, quantity, option) {
+  return (productionTimeMinutes(product, option) * quantity) / 10;
 }
 
 export function buildQuote(items, resolveProduct, options = {}) {
@@ -241,7 +258,7 @@ export function buildQuote(items, resolveProduct, options = {}) {
 
     const unitPrice = unitPriceFromWeight(unitWeightGrams, quantity);
     const lineTotal = unitPrice * quantity;
-    const productionMinutes = lineProductionMinutes(product, quantity);
+    const productionMinutes = lineProductionMinutes(product, quantity, option);
 
     return {
       productId: product.id,
@@ -251,7 +268,7 @@ export function buildQuote(items, resolveProduct, options = {}) {
       quantity,
       unitPrice,
       lineTotal,
-      productionTimeMinutes: productionTimeMinutes(product),
+      productionTimeMinutes: productionTimeMinutes(product, option),
       productionLineMinutes: productionMinutes,
       imageUrl: option.imageUrl || '',
       category: product.category || '',

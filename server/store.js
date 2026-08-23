@@ -113,10 +113,13 @@ CREATE TABLE IF NOT EXISTS products (
   reference text,
   summary text,
   page integer,
+  production_time integer,
   options jsonb NOT NULL DEFAULT '[]',
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
 );
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS production_time integer;
 `;
 
 export function createMemoryStore(initialState = EMPTY_STORE) {
@@ -278,8 +281,8 @@ export function createPostgresStore(options = {}) {
     async createProduct(product) {
       return withClient(async (client) => {
         await client.query(
-          `INSERT INTO products (id, name, category, reference, summary, page, options, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)`,
+          `INSERT INTO products (id, name, category, reference, summary, page, production_time, options, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)`,
           [
             product.id,
             product.name,
@@ -287,6 +290,7 @@ export function createPostgresStore(options = {}) {
             nullIfEmpty(product.reference),
             nullIfEmpty(product.summary),
             product.page ?? null,
+            product.productionTime ?? null,
             JSON.stringify(product.options || []),
             asTimestamp(product.createdAt),
             asTimestamp(product.updatedAt),
@@ -312,8 +316,9 @@ export function createPostgresStore(options = {}) {
                  reference = $4,
                  summary = $5,
                  page = $6,
-                 options = $7::jsonb,
-                 updated_at = $8
+                 production_time = $7,
+                 options = $8::jsonb,
+                 updated_at = $9
            WHERE id = $1`,
           [
             id,
@@ -322,6 +327,7 @@ export function createPostgresStore(options = {}) {
             nullIfEmpty(next.reference),
             nullIfEmpty(next.summary),
             next.page ?? null,
+            next.productionTime ?? null,
             JSON.stringify(next.options || []),
             asTimestamp(next.updatedAt),
           ]
@@ -340,8 +346,8 @@ export function createPostgresStore(options = {}) {
         if (existing.rows[0].count > 0) return { seeded: 0 };
         for (const product of seedList) {
           await client.query(
-            `INSERT INTO products (id, name, category, reference, summary, page, options, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
+            `INSERT INTO products (id, name, category, reference, summary, page, production_time, options, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)
              ON CONFLICT (id) DO NOTHING`,
             [
               product.id,
@@ -350,6 +356,7 @@ export function createPostgresStore(options = {}) {
               nullIfEmpty(product.reference),
               nullIfEmpty(product.summary),
               product.page ?? null,
+              product.productionTime ?? null,
               JSON.stringify(product.options || []),
               asTimestamp(product.createdAt),
               asTimestamp(product.updatedAt),
@@ -631,6 +638,7 @@ function mapProductRow(row) {
     reference: undefinedIfNull(row.reference),
     summary: undefinedIfNull(row.summary),
     page: row.page == null ? undefined : Number(row.page),
+    productionTime: row.production_time == null ? undefined : Number(row.production_time),
     options: row.options || [],
     createdAt: asIsoString(row.created_at),
     updatedAt: asIsoString(row.updated_at),

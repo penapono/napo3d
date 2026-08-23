@@ -9,6 +9,7 @@ x-api-environment: &api-environment
   RESEND_API_KEY: ${RESEND_API_KEY:-}
   FROM_EMAIL: ${FROM_EMAIL:-}
   ORDER_RECIPIENT: ${ORDER_RECIPIENT:-pedro.gnaponoceno@gmail.com}
+  MAKERWORLD_SCRAPER_URL: ${MAKERWORLD_SCRAPER_URL:-http://makerworld-scraper:8010}
 
 services:
   db:
@@ -37,12 +38,22 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      makerworld-scraper:
+        condition: service_started
     ports:
       - "127.0.0.1:3001:3001"
     volumes:
       - ./server:/app/server:ro
       - ./shared:/app/shared:ro
       - ./data:/app/data:ro
+
+  makerworld-scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile.makerworld
+    restart: unless-stopped
+    volumes:
+      - ./makerworld_scraper:/app/makerworld_scraper:ro
 
   front:
     build:

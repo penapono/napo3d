@@ -16,6 +16,13 @@ import {
   validateProductInput,
 } from '../shared/contract.js';
 import { processPendingEmails, resolveMailerConfig } from './mailer.js';
+import {
+  hasMakerWorldOptions,
+  makerWorldOptionTargets,
+  mergeMakerWorldProductData,
+  normalizeMakerWorldUrl,
+  scrapeMakerWorldModel as runMakerWorldScraper,
+} from './makerworld.js';
 import { createPostgresStore, DEFAULT_DATABASE_URL } from './store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -33,7 +40,15 @@ export function createApp(options = {}) {
   const catalogSeedPath = path.join(rootDir, 'data', 'models.json');
   const corsOrigins = resolveCorsOrigins(options.corsOrigins);
   const mailerConfig = options.mailerConfig || resolveMailerConfig();
+  const scrapeMakerWorld =
+    options.scrapeMakerWorldModel ||
+    ((url) =>
+      runMakerWorldScraper(normalizeMakerWorldUrl(url) || url, {
+        scraperUrl: options.makerWorldScraperUrl || process.env.MAKERWORLD_SCRAPER_URL,
+      }));
   const rateLimits = new Map();
+  const makerWorldRefreshJobs = new Map();
+  const makerWorldActiveRefreshes = new Map();
 
   const catalogState = {
     loadedAt: 0,
@@ -66,6 +81,145 @@ export function createApp(options = {}) {
   function invalidateCatalogCache() {
     catalogState.loadedAt = 0;
     catalogState.items = [];
+  }
+
+  function serializeMakerWorldJob(job) {
+    if (!job) return null;
+    return {
+      status: job.status,
+      startedAt: job.startedAt || null,
+      updatedAt: job.updatedAt || null,
+      finishedAt: job.finishedAt || null,
+      successCount: job.successCount || 0,
+      failureCount: job.failureCount || 0,
+      totalCount: job.totalCount || 0,
+      error: job.error || '',
+    };
+  }
+
+  function setMakerWorldJob(productId, patch) {
+    const current = makerWorldRefreshJobs.get(productId) || { productId };
+    const next = { ...current, ...patch, productId };
+    makerWorldRefreshJobs.set(productId, next);
+    return next;
+  }
+
+  function withAdminProductMeta(product) {
+    return {
+      ...product,
+      hasMakerWorldOptions: hasMakerWorldOptions(product),
+      makerworldRefresh: serializeMakerWorldJob(makerWorldRefreshJobs.get(product.id)),
+    };
+  }
+
+  function startMakerWorldRefresh(productId) {
+    const running = makerWorldActiveRefreshes.get(productId);
+    if (running) {
+      return {
+        alreadyRunning: true,
+        job: serializeMakerWorldJob(makerWorldRefreshJobs.get(productId)),
+      };
+    }
+
+    const startedAt = new Date().toISOString();
+    setMakerWorldJob(productId, {
+      status: 'running',
+      startedAt,
+      updatedAt: startedAt,
+      finishedAt: null,
+      successCount: 0,
+      failureCount: 0,
+      totalCount: 0,
+      error: '',
+    });
+
+    const promise = (async () => {
+      try {
+        const product = await store.getProduct(productId);
+        if (!product) {
+          const error = new Error('Produto não encontrado.');
+          error.code = 'PRODUCT_NOT_FOUND';
+          throw error;
+        }
+
+        const targets = makerWorldOptionTargets(product);
+        if (!targets.length) {
+          const error = new Error('Este produto não possui URLs do MakerWorld para atualizar.');
+          error.code = 'NO_MAKERWORLD_SOURCE';
+          throw error;
+        }
+
+        setMakerWorldJob(productId, {
+          totalCount: targets.length,
+          updatedAt: new Date().toISOString(),
+        });
+
+        const refreshes = [];
+        for (const target of targets) {
+          try {
+            const payload = await scrapeMakerWorld(
+              normalizeMakerWorldUrl(target.url) || target.url
+            );
+            refreshes.push({ target, payload });
+          } catch (error) {
+            refreshes.push({ target, error });
+          }
+
+          setMakerWorldJob(productId, {
+            updatedAt: new Date().toISOString(),
+            successCount: refreshes.filter((entry) => entry.payload).length,
+            failureCount: refreshes.filter((entry) => entry.error).length,
+          });
+        }
+
+        const successCount = refreshes.filter((entry) => entry.payload).length;
+        const failureCount = refreshes.filter((entry) => entry.error).length;
+        if (!successCount) {
+          const firstError = refreshes.find((entry) => entry.error)?.error;
+          const error = new Error(
+            firstError?.message || 'Não foi possível atualizar nenhuma URL do MakerWorld.'
+          );
+          error.code = firstError?.code || 'MAKERWORLD_REFRESH_FAILED';
+          throw error;
+        }
+
+        const patch = mergeMakerWorldProductData(product, refreshes);
+        const updated = await store.updateProduct(productId, patch);
+        if (!updated) {
+          const error = new Error('Produto não encontrado.');
+          error.code = 'PRODUCT_NOT_FOUND';
+          throw error;
+        }
+
+        invalidateCatalogCache();
+        const finishedAt = new Date().toISOString();
+        setMakerWorldJob(productId, {
+          status: 'succeeded',
+          updatedAt: finishedAt,
+          finishedAt,
+          successCount,
+          failureCount,
+          totalCount: targets.length,
+          error: '',
+        });
+      } catch (error) {
+        const finishedAt = new Date().toISOString();
+        setMakerWorldJob(productId, {
+          status: 'failed',
+          updatedAt: finishedAt,
+          finishedAt,
+          error: error.message || 'Falha ao atualizar dados do MakerWorld.',
+        });
+      } finally {
+        makerWorldActiveRefreshes.delete(productId);
+      }
+    })();
+
+    makerWorldActiveRefreshes.set(productId, promise);
+    return {
+      alreadyRunning: false,
+      job: serializeMakerWorldJob(makerWorldRefreshJobs.get(productId)),
+    };
   }
 
   async function loadCatalog() {
@@ -343,7 +497,9 @@ export function createApp(options = {}) {
       const admin = await requireAdmin(request, response);
       if (!admin) return;
       const products = await loadCatalog();
-      writeJson(response, 200, { products: sortProducts(products, 'name') });
+      writeJson(response, 200, {
+        products: sortProducts(products.map(withAdminProductMeta), 'name'),
+      });
       return;
     }
 
@@ -369,6 +525,37 @@ export function createApp(options = {}) {
       return;
     }
 
+    if (
+      request.method === 'POST' &&
+      pathname.endsWith('/refresh-makerworld') &&
+      pathname.startsWith('/api/admin/products/')
+    ) {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      const productId = decodeURIComponent(pathname.split('/')[4] || '');
+      const product = await store.getProduct(productId);
+      if (!product) {
+        errorResponse(request, response, 404, 'PRODUCT_NOT_FOUND', 'Produto não encontrado.');
+        return;
+      }
+      if (!hasMakerWorldOptions(product)) {
+        errorResponse(
+          request,
+          response,
+          422,
+          'NO_MAKERWORLD_SOURCE',
+          'Este produto não possui URLs do MakerWorld para atualizar.'
+        );
+        return;
+      }
+      const refresh = startMakerWorldRefresh(productId);
+      writeJson(response, 202, {
+        job: refresh.job,
+        product: withAdminProductMeta(product),
+      });
+      return;
+    }
+
     if (request.method === 'GET' && pathname.startsWith('/api/admin/products/')) {
       const admin = await requireAdmin(request, response);
       if (!admin) return;
@@ -378,7 +565,7 @@ export function createApp(options = {}) {
         errorResponse(request, response, 404, 'PRODUCT_NOT_FOUND', 'Produto não encontrado.');
         return;
       }
-      writeJson(response, 200, { product });
+      writeJson(response, 200, { product: withAdminProductMeta(product) });
       return;
     }
 
