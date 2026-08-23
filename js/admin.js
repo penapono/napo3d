@@ -120,7 +120,6 @@ function openProductDialog(product = null) {
   form.elements.namedItem('category').value = product?.category || '';
   form.elements.namedItem('page').value = product?.page || '';
   form.elements.namedItem('summary').value = product?.summary || '';
-  form.elements.namedItem('reference').value = product?.reference || '';
   form.elements.namedItem('weight').value = option.weight || '';
   form.elements.namedItem('productionTime').value =
     option.productionTime || product?.productionTime || '';
@@ -213,7 +212,6 @@ function bindProductEvents() {
         ? Number(form.elements.namedItem('page').value)
         : undefined,
       summary: form.elements.namedItem('summary').value.trim(),
-      reference: form.elements.namedItem('reference').value.trim(),
       productionTime: form.elements.namedItem('productionTime').value
         ? Number(form.elements.namedItem('productionTime').value)
         : undefined,

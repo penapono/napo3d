@@ -102,11 +102,11 @@ function redirect(page, params = {}) {
 function productImage(item, option) {
   const local = localImages[item.name.trim()];
   const galleryPrimary = Array.isArray(option.imageGallery) ? option.imageGallery[0] : '';
-  const candidate = option.imageUrl || galleryPrimary || item.reference;
+  const candidate = option.imageUrl || galleryPrimary;
   const candidateIsLocal = candidate && candidate.startsWith('assets/images/');
   return {
     primary: local || candidate,
-    fallback: local ? candidate : candidateIsLocal ? item.reference : '',
+    fallback: local ? candidate : candidateIsLocal ? option.imageUrl || '' : '',
   };
 }
 

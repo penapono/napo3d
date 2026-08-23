@@ -603,13 +603,11 @@ test('admin can trigger a MakerWorld refresh and persist scraped option fields',
     'https://makerworld.bblmw.com/makerworld/model/demo/design/example-3.webp',
   ]);
   assert.equal(detail.json.product.options[0].time, '2h');
-  assert.equal(detail.json.product.options[0].rating, '4.9 (37)');
   assert.equal(detail.json.product.options[0].weight, 84);
   assert.equal(detail.json.product.options[0].thumb, detail.json.product.options[0].imageUrl);
   assert.equal(detail.json.product.options[0].makerworldModelId, '2838224');
   assert.equal(detail.json.product.options[0].makerworldLastError, '');
-  assert.equal(detail.json.product.reference, detail.json.product.options[0].imageUrl);
-  assert.equal(detail.json.product.summary, 'Modelo sincronizado do MakerWorld.');
+  assert.equal(detail.json.product.summary, '');
   assert.equal(detail.json.product.options[0].productionTime, 120);
   assert.equal(detail.json.product.productionTime, 120);
 });

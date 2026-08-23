@@ -23,7 +23,7 @@ export function flattenLegacyProduct(product = {}) {
     const name = multipleOptions
       ? joinName(product.name, option?.name)
       : String(product.name || '').trim();
-    const reference = firstFilled(
+    const imageUrl = firstFilled(
       option?.imageUrl,
       Array.isArray(option?.imageGallery) ? option.imageGallery[0] : '',
       option?.thumb,
@@ -37,10 +37,9 @@ export function flattenLegacyProduct(product = {}) {
       ...product,
       id,
       name: name || String(option?.name || '').trim() || String(product.id || '').trim(),
-      reference: reference || '',
       summary: summary || '',
       productionTime,
-      options: [{ ...option }],
+      options: [{ ...option, imageUrl: imageUrl || option?.imageUrl || '' }],
     };
   });
 }

@@ -35,7 +35,7 @@ test('flattenCatalogProducts expands a legacy product into standalone products',
   assert.equal(products[0].name, 'Produto Base — Versao A');
   assert.equal(products[1].name, 'Produto Base — Versao B');
   assert.equal(products[0].summary, 'Descricao A');
-  assert.equal(products[1].reference, 'b.png');
+  assert.equal(primaryProductOption(products[1]).imageUrl, 'b.png');
   assert.equal(products[1].productionTime, 90);
   assert.deepEqual(
     products.map((product) => product.options.length),

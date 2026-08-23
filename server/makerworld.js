@@ -80,7 +80,6 @@ export function mergeMakerWorldProductData(product, refreshes) {
   const now = new Date().toISOString();
   const refreshesByIndex = new Map(refreshes.map((entry) => [entry.target.index, entry]));
   const makerWorldTargetCount = makerWorldOptionTargets(product).length;
-  let reference = '';
   let summary = String(product.summary || '').trim();
   let productionTime = Number(product.productionTime) || undefined;
 
@@ -108,7 +107,6 @@ export function mergeMakerWorldProductData(product, refreshes) {
       imageGallery,
       source: 'MakerWorld',
       time: firstText(bestProfile.print_time) || option.time || '',
-      rating: formatMakerWorldRating(bestProfile) || option.rating || '',
       thumb: imageUrl || option.thumb || '',
       weight:
         Number.isFinite(weightGrams) && weightGrams > 0
@@ -122,12 +120,7 @@ export function mergeMakerWorldProductData(product, refreshes) {
       makerworldLastError: '',
     };
 
-    if (!reference && next.imageUrl) {
-      reference = next.imageUrl;
-    }
-
     if (makerWorldTargetCount === 1) {
-      summary = firstText(payload.description) || summary;
       productionTime = printTimeMinutes || productionTime;
     }
 
@@ -135,7 +128,6 @@ export function mergeMakerWorldProductData(product, refreshes) {
   });
 
   return {
-    reference: reference || String(product.reference || '').trim(),
     summary,
     productionTime,
     options,
@@ -192,16 +184,6 @@ function secondsToMinutes(value) {
 function firstText(value) {
   const text = String(value || '').trim();
   return text || '';
-}
-
-function formatMakerWorldRating(profile = {}) {
-  const rating = Number(profile.rating);
-  const ratingCount = Number(profile.rating_count);
-  if (!Number.isFinite(rating) || rating <= 0) return '';
-  if (Number.isFinite(ratingCount) && ratingCount > 0) {
-    return `${rating.toFixed(1)} (${ratingCount})`;
-  }
-  return rating.toFixed(1);
 }
 
 function makeScraperError(code, message, cause) {

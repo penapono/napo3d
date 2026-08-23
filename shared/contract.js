@@ -113,11 +113,12 @@ export function validateAddressInput(address = {}) {
   return { ok: true, address: normalized };
 }
 
-export function normalizeProductOptionInput(option = {}) {
+export function normalizeProductOptionInput(option = {}, product = {}) {
+  const fallbackImageUrl = normalizeOptionalText(product.reference);
   return {
     name: normalizeRequiredText(option.name),
     url: normalizeOptionalText(option.url),
-    imageUrl: normalizeOptionalText(option.imageUrl),
+    imageUrl: normalizeOptionalText(option.imageUrl) || fallbackImageUrl,
     imageGallery: normalizeOptionalTextList(option.imageGallery),
     source: normalizeOptionalText(option.source),
     dims: normalizeOptionalText(option.dims),
@@ -157,7 +158,7 @@ export function validateProductInput(product = {}) {
       message: 'Cadastre ao menos uma variação (opção).',
     };
   }
-  const options = rawOptions.map(normalizeProductOptionInput);
+  const options = rawOptions.map((option) => normalizeProductOptionInput(option, product));
   for (const option of options) {
     if (!option.name) {
       return { ok: false, code: 'INVALID_PRODUCT', message: 'Toda variação precisa de um nome.' };
