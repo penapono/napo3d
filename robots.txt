@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin.html
+Disallow: /carrinho
+Disallow: /minha-conta
+Disallow: /endereco
+
+Sitemap: https://napo3d.shop/api/sitemap.xml

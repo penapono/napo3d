@@ -73,6 +73,7 @@ services:
     volumes:
       - ./index.html:/usr/share/nginx/html/index.html:ro
       - ./admin.html:/usr/share/nginx/html/admin.html:ro
+      - ./robots.txt:/usr/share/nginx/html/robots.txt:ro
       - ./css:/usr/share/nginx/html/css:ro
       - ./js:/usr/share/nginx/html/js:ro
       - ./shared:/usr/share/nginx/html/shared:ro

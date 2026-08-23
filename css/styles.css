@@ -1144,6 +1144,35 @@ a {
   font-size: 14px;
   margin: 0;
 }
+.seo-section {
+  padding: 88px 0;
+}
+.seo-grid {
+  display: grid;
+  gap: 36px;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+}
+.faq-list {
+  display: grid;
+  gap: 16px;
+}
+.faq-item {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 22px 24px;
+}
+.faq-item h3 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 22px;
+  line-height: 1.15;
+  margin: 0 0 10px;
+}
+.faq-item p {
+  color: var(--muted);
+  line-height: 1.7;
+  margin: 0;
+}
 .site-footer {
   background: var(--ink);
   border-top: 1px solid rgba(255, 255, 255, 0.12);
@@ -1337,6 +1366,9 @@ a {
   .catalog-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+  .seo-grid {
+    grid-template-columns: 1fr;
+  }
   .how-grid {
     gap: 45px;
     grid-template-columns: 1fr;
@@ -1447,6 +1479,15 @@ a {
   }
   .pagination {
     margin-top: 28px;
+  }
+  .seo-section {
+    padding: 60px 0;
+  }
+  .faq-item {
+    padding: 18px 18px 20px;
+  }
+  .faq-item h3 {
+    font-size: 20px;
   }
   .product-detail-hero,
   .product-detail-hero img,

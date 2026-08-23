@@ -37,6 +37,7 @@ async function api(app, pathname, options = {}) {
   return {
     response: { status: result.statusCode, headers: result.headers },
     json: result.json,
+    text: result.text,
   };
 }
 
@@ -459,6 +460,26 @@ test('GET /api/products filters by category and paginates', async (t) => {
     `/api/products?category=${encodeURIComponent('Identidade visual')}`
   );
   assert.ok(filtered.json.items.every((item) => item.category === 'Identidade visual'));
+});
+
+test('GET /api/sitemap.xml exposes the home page and product URLs', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+
+  const sitemap = await api(app, '/api/sitemap.xml', {
+    headers: {
+      host: 'napo3d.shop',
+      'x-forwarded-proto': 'https',
+    },
+  });
+
+  assert.equal(sitemap.response.status, 200);
+  assert.match(
+    String(sitemap.response.headers['Content-Type'] || sitemap.response.headers['content-type']),
+    /application\/xml/
+  );
+  assert.match(sitemap.text, /<loc>https:\/\/napo3d\.shop\/<\/loc>/);
+  assert.match(sitemap.text, /<loc>https:\/\/napo3d\.shop\/produtos\//);
 });
 
 test('register enforces a rate limit per IP', async (t) => {

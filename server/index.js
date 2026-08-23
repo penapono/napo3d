@@ -43,6 +43,7 @@ const SESSION_COOKIE_NAME = 'napo3d_session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
 const MAX_ACTIVE_SESSIONS_PER_USER = 8;
+const DEFAULT_PUBLIC_SITE_URL = 'https://napo3d.shop';
 
 export function createApp(options = {}) {
   const rootDir = options.rootDir || projectRoot;
@@ -585,6 +586,14 @@ export function createApp(options = {}) {
     response.end(message);
   }
 
+  function writeXml(response, status, payload) {
+    response.writeHead(status, {
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    response.end(payload);
+  }
+
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
@@ -652,6 +661,78 @@ export function createApp(options = {}) {
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
+  }
+
+  function publicSiteUrl(request) {
+    const configured = String(options.publicSiteUrl || process.env.PUBLIC_SITE_URL || '')
+      .trim()
+      .replace(/\/+$/, '');
+    if (configured) return configured;
+    const proto = String(
+      request.headers['x-forwarded-proto'] ||
+        request.headers['x-forwarded-protocol'] ||
+        (request.socket?.encrypted ? 'https' : 'http')
+    )
+      .split(',')[0]
+      .trim();
+    const host = String(request.headers['x-forwarded-host'] || request.headers.host || '')
+      .split(',')[0]
+      .trim();
+    if (proto && host) return `${proto}://${host}`;
+    return DEFAULT_PUBLIC_SITE_URL;
+  }
+
+  function productPublicPath(product) {
+    return `/produtos/${encodeURIComponent(product.id)}`;
+  }
+
+  function escapeXml(value) {
+    return String(value || '').replace(/[<>&'"]/g, (char) => {
+      return (
+        {
+          '<': '&lt;',
+          '>': '&gt;',
+          '&': '&amp;',
+          "'": '&apos;',
+          '"': '&quot;',
+        }[char] || char
+      );
+    });
+  }
+
+  function productSitemapLastmod(product) {
+    return new Date(product.updatedAt || product.createdAt || Date.now()).toISOString();
+  }
+
+  function buildSitemapXml(baseUrl, products) {
+    const latestProductDate =
+      products
+        .map((product) => product.updatedAt || product.createdAt)
+        .filter(Boolean)
+        .sort()
+        .at(-1) || new Date().toISOString();
+    const productEntries = products.map((product) => {
+      return [
+        '  <url>',
+        `    <loc>${escapeXml(`${baseUrl}${productPublicPath(product)}`)}</loc>`,
+        `    <lastmod>${escapeXml(productSitemapLastmod(product))}</lastmod>`,
+        '    <changefreq>weekly</changefreq>',
+        '    <priority>0.8</priority>',
+        '  </url>',
+      ].join('\n');
+    });
+    return [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+      '  <url>',
+      `    <loc>${escapeXml(`${baseUrl}/`)}</loc>`,
+      `    <lastmod>${escapeXml(latestProductDate)}</lastmod>`,
+      '    <changefreq>daily</changefreq>',
+      '    <priority>1.0</priority>',
+      '  </url>',
+      ...productEntries,
+      '</urlset>',
+    ].join('\n');
   }
 
   function passwordHash(password, salt = crypto.randomBytes(16).toString('hex')) {
@@ -905,6 +986,12 @@ export function createApp(options = {}) {
 
     if (request.method === 'GET' && pathname === '/api/health') {
       writeJson(response, 200, { status: 'ok' });
+      return;
+    }
+
+    if (request.method === 'GET' && pathname === '/api/sitemap.xml') {
+      const catalog = await loadCatalog();
+      writeXml(response, 200, buildSitemapXml(publicSiteUrl(request), catalog));
       return;
     }
 

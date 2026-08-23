@@ -63,6 +63,16 @@ const LEGACY_ROUTE_MAP = {
   shipping: 'shipping',
 };
 const POST_AUTH_ROUTE_KEY = 'napo3d-post-auth-route';
+const SEO_SITE_URL = String(
+  document.querySelector('meta[name="napo3d-site-url"]')?.getAttribute('content') ||
+    window.location.origin
+)
+  .trim()
+  .replace(/\/+$/, '');
+const DEFAULT_SEO_IMAGE = `${SEO_SITE_URL}/assets/images/image_010.webp`;
+const DEFAULT_SEO_DESCRIPTION =
+  'Impressão 3D sob demanda para decoração, organização e brindes personalizados com preço claro e produção cuidadosa.';
+const DEFAULT_SEO_TITLE = 'Impressão 3D sob demanda | Napo3D';
 
 const $ = (selector) => document.querySelector(selector);
 const normalizePathname = (pathname) => {
@@ -167,6 +177,181 @@ function formatPhone(value) {
 
 function isValidEmail(value) {
   return VALID_EMAIL_REGEX.test(String(value || '').trim());
+}
+
+function absoluteSiteUrl(pathname = '/') {
+  return new URL(pathname, `${SEO_SITE_URL}/`).toString();
+}
+
+function firstFilledText(...values) {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function productLeadText(item) {
+  return (
+    firstFilledText(item?.summary, item?.description) ||
+    copy[item?.category] ||
+    'Peça em impressão 3D sob demanda com produção cuidadosa e preço claro por quantidade.'
+  );
+}
+
+function setHeadValue(id, value, attribute = 'content') {
+  const node = document.getElementById(id);
+  if (!node || value == null) return;
+  node.setAttribute(attribute, String(value));
+}
+
+function setStructuredData(payloads = []) {
+  const node = document.getElementById('structured-data-page');
+  if (!node) return;
+  node.textContent = payloads.length ? JSON.stringify(payloads) : '';
+}
+
+function updateSeoMetadata({
+  title = DEFAULT_SEO_TITLE,
+  description = DEFAULT_SEO_DESCRIPTION,
+  canonical = absoluteSiteUrl('/'),
+  robots = 'index,follow,max-image-preview:large',
+  type = 'website',
+  image = DEFAULT_SEO_IMAGE,
+  imageAlt = 'Peça impressa em 3D da Napo3D',
+} = {}) {
+  document.title = title;
+  setHeadValue('meta-description', description);
+  setHeadValue('meta-robots', robots);
+  setHeadValue('canonical-url', canonical, 'href');
+  setHeadValue('meta-og-type', type);
+  setHeadValue('meta-og-title', title);
+  setHeadValue('meta-og-description', description);
+  setHeadValue('meta-og-url', canonical);
+  setHeadValue('meta-og-image', image);
+  setHeadValue('meta-og-image-alt', imageAlt);
+  setHeadValue('meta-twitter-title', title);
+  setHeadValue('meta-twitter-description', description);
+  setHeadValue('meta-twitter-image', image);
+}
+
+function buildCatalogStructuredData() {
+  const itemListElement = state.items.slice(0, 12).map((item, index) => {
+    return {
+      '@type': 'ListItem',
+      position: index + 1,
+      url: absoluteSiteUrl(pathForPage('product', { productId: item.id })),
+      name: item.name,
+    };
+  });
+  return itemListElement.length
+    ? [
+        {
+          '@context': 'https://schema.org',
+          '@type': 'ItemList',
+          name: 'Catálogo de impressão 3D Napo3D',
+          itemListElement,
+        },
+      ]
+    : [];
+}
+
+function buildProductStructuredData(item) {
+  const option = primaryProductOption(item);
+  if (!option) return [];
+  const imageUrls = productGalleryImages(item, option).map((url) => absoluteSiteUrl(url));
+  const canonical = absoluteSiteUrl(pathForPage('product', { productId: item.id }));
+  const rating = Number(option.rating);
+  const ratingCount = Number(option.ratingCount);
+  const price = unitPriceFromWeight(weightInGrams(option), 1, productHasMaglev(item));
+  const productSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: item.name,
+    description: productLeadText(item),
+    category: item.category || undefined,
+    image: imageUrls,
+    brand: {
+      '@type': 'Brand',
+      name: 'Napo3D',
+    },
+    offers: {
+      '@type': 'Offer',
+      priceCurrency: 'BRL',
+      price: Number.isFinite(price) ? String(price) : undefined,
+      availability: 'https://schema.org/InStock',
+      url: canonical,
+    },
+  };
+  if (Number.isFinite(rating) && rating > 0 && Number.isFinite(ratingCount) && ratingCount > 0) {
+    productSchema.aggregateRating = {
+      '@type': 'AggregateRating',
+      ratingValue: rating.toFixed(1),
+      reviewCount: String(Math.round(ratingCount)),
+    };
+  }
+  return [productSchema];
+}
+
+function updateSeoForCurrentPage(product = null) {
+  const page = currentPage();
+  if (page === 'product') {
+    if (product) {
+      const option = primaryProductOption(product);
+      const imageUrl = firstFilledText(
+        option?.imageUrl,
+        Array.isArray(option?.imageGallery) ? option.imageGallery[0] : '',
+        DEFAULT_SEO_IMAGE
+      );
+      updateSeoMetadata({
+        title: `${product.name} | Impressão 3D sob demanda | Napo3D`,
+        description: productLeadText(product),
+        canonical: absoluteSiteUrl(pathForPage('product', { productId: product.id })),
+        robots: 'index,follow,max-image-preview:large',
+        type: 'product',
+        image: absoluteSiteUrl(imageUrl),
+        imageAlt: product.name,
+      });
+      setStructuredData(buildProductStructuredData(product));
+      return;
+    }
+    updateSeoMetadata({
+      title: `Produto em impressão 3D | Napo3D`,
+      description: DEFAULT_SEO_DESCRIPTION,
+      canonical: absoluteSiteUrl(window.location.pathname),
+      robots: 'index,follow,max-image-preview:large',
+      type: 'website',
+      image: DEFAULT_SEO_IMAGE,
+    });
+    setStructuredData([]);
+    return;
+  }
+  if (!page) {
+    updateSeoMetadata({
+      title: DEFAULT_SEO_TITLE,
+      description: DEFAULT_SEO_DESCRIPTION,
+      canonical: absoluteSiteUrl('/'),
+      robots: 'index,follow,max-image-preview:large',
+      type: 'website',
+      image: DEFAULT_SEO_IMAGE,
+    });
+    setStructuredData(buildCatalogStructuredData());
+    return;
+  }
+  const privateTitles = {
+    cart: 'Carrinho | Napo3D',
+    account: 'Minha conta | Napo3D',
+    shipping: 'Endereço e revisão | Napo3D',
+  };
+  updateSeoMetadata({
+    title: privateTitles[page] || 'Napo3D',
+    description: DEFAULT_SEO_DESCRIPTION,
+    canonical: absoluteSiteUrl(pathForPage(page)),
+    robots: 'noindex,nofollow',
+    type: 'website',
+    image: DEFAULT_SEO_IMAGE,
+  });
+  setStructuredData([]);
 }
 
 function storePostAuthPage(page) {
@@ -397,6 +582,7 @@ function renderCatalog() {
       openProductPage();
     });
   });
+  if (!currentPage()) updateSeoForCurrentPage();
 }
 
 function productShareData(item) {
@@ -486,18 +672,30 @@ async function renderProductPage() {
   const productId = currentProductId();
   if (!productId) {
     shell.innerHTML = '<p class="page-lead">Produto não encontrado.</p>';
+    updateSeoForCurrentPage(null);
     return;
   }
   const requestKey = ++state.productPageRequestKey;
   shell.innerHTML = '<p class="page-lead">Carregando produto...</p>';
+  updateSeoForCurrentPage(null);
   try {
     const product = await loadProductDetail(productId);
     if (state.productPageRequestKey !== requestKey || currentProductId() !== productId) return;
     if (!product) throw new Error('Produto não encontrado.');
     renderProductPageContent(product);
+    updateSeoForCurrentPage(product);
   } catch (error) {
     if (state.productPageRequestKey !== requestKey || currentProductId() !== productId) return;
     shell.innerHTML = `<div class="info-section"><h1>Produto indisponível</h1><p class="page-lead">${text(error.message || 'Não foi possível carregar este produto agora.')}</p></div>`;
+    updateSeoMetadata({
+      title: 'Produto indisponível | Napo3D',
+      description: 'Este produto de impressão 3D não está disponível no momento.',
+      canonical: absoluteSiteUrl(window.location.pathname),
+      robots: 'noindex,nofollow',
+      type: 'website',
+      image: DEFAULT_SEO_IMAGE,
+    });
+    setStructuredData([]);
   }
 }
 
@@ -882,6 +1080,7 @@ function renderStorePage() {
   renderCart();
   renderAccountPage();
   renderShippingPage();
+  if (page !== 'product') updateSeoForCurrentPage();
   if (page === 'product') {
     renderProductPage().catch(console.error);
   }
@@ -1188,6 +1387,7 @@ async function init() {
   renderHeader();
   bindEvents();
   renderStorePage();
+  updateSeoForCurrentPage();
   fillAddressForm();
   await refreshQuote();
   window.addEventListener('popstate', () => {
