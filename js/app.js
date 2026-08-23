@@ -90,6 +90,7 @@ const text = (value) =>
         /[&<>"']/g,
         (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]
       );
+const VALID_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function formatDuration(minutes) {
   const total = Math.max(0, Math.round(minutes));
@@ -123,6 +124,22 @@ function setStatus(selector, message, tone = '') {
   if (!node) return;
   node.textContent = message || '';
   node.dataset.tone = tone;
+}
+
+function formatPhone(value) {
+  const digits = String(value || '')
+    .replace(/\D/g, '')
+    .slice(0, 11);
+  if (digits.length <= 2) return digits ? `(${digits}` : '';
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
+function isValidEmail(value) {
+  return VALID_EMAIL_REGEX.test(String(value || '').trim());
 }
 
 function storePostAuthPage(page) {
@@ -501,7 +518,10 @@ function renderAccountPage() {
   const summary = $('#account-summary');
   const actions = $('#account-actions');
   const nameField = $('#account-name-field');
+  const phoneField = $('#account-phone-field');
   const nameInput = document.querySelector('[name="accountName"]');
+  const phoneInput = document.querySelector('[name="accountPhone"]');
+  const submitButton = $('#account-submit');
   modeLabel.textContent =
     state.authMode === 'register'
       ? 'Crie sua conta para salvar pedidos e endereços.'
@@ -512,7 +532,7 @@ function renderAccountPage() {
     form.hidden = true;
     summary.hidden = false;
     actions.hidden = false;
-    summary.innerHTML = `<div class="info-card"><strong>${text(state.me.name)}</strong><span>${text(state.me.email)}</span><span>${text(state.me.phone || 'Telefone não informado')}</span><span>${state.addresses.length} endereço(s) salvo(s)</span><span>${state.orders.length} pedido(s)</span></div>`;
+    summary.innerHTML = `<div class="info-card"><strong>${text(state.me.name)}</strong><span>${text(state.me.email)}</span><span>${text(state.me.phone || 'Celular não informado')}</span><span>${state.addresses.length} endereço(s) salvo(s)</span><span>${state.orders.length} pedido(s)</span></div>`;
     actions.innerHTML =
       '<button class="button button-secondary" id="account-manage-addresses" type="button">Gerenciar endereços</button><button class="button button-secondary" id="account-logout" type="button">Sair</button>';
     $('#account-manage-addresses').onclick = () => redirect('shipping');
@@ -534,7 +554,14 @@ function renderAccountPage() {
     summary.hidden = true;
     actions.hidden = true;
     nameField.hidden = state.authMode !== 'register';
+    phoneField.hidden = state.authMode !== 'register';
     nameInput.required = state.authMode === 'register';
+    phoneInput.required = state.authMode === 'register';
+    submitButton.textContent = state.authMode === 'register' ? 'Criar conta' : 'Entrar';
+    if (state.authMode !== 'register') {
+      nameInput.value = '';
+      phoneInput.value = '';
+    }
   }
   renderOrders();
 }
@@ -820,17 +847,34 @@ function bindEvents() {
   document.querySelectorAll('[data-auth-mode]').forEach((button) =>
     button.addEventListener('click', () => {
       state.authMode = button.dataset.authMode;
+      setStatus('#account-page-status', '');
       renderAccountPage();
     })
   );
+  $('[name="accountPhone"]')?.addEventListener('input', (event) => {
+    event.target.value = formatPhone(event.target.value);
+  });
+  $('[name="accountEmail"]')?.addEventListener('input', (event) => {
+    const valid = isValidEmail(event.target.value);
+    event.target.setCustomValidity(valid || !event.target.value ? '' : 'Informe um e-mail válido.');
+  });
   $('#account-page-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const email = String(form.get('accountEmail') || '')
+      .trim()
+      .toLowerCase();
+    if (!isValidEmail(email)) {
+      const emailInput = $('[name="accountEmail"]');
+      emailInput?.setCustomValidity('Informe um e-mail válido.');
+      emailInput?.reportValidity();
+      setStatus('#account-page-status', 'Informe um e-mail válido.');
+      return;
+    }
+    $('[name="accountEmail"]')?.setCustomValidity('');
     const payload = {
       name: String(form.get('accountName') || '').trim(),
-      email: String(form.get('accountEmail') || '')
-        .trim()
-        .toLowerCase(),
+      email,
       password: String(form.get('accountPassword') || ''),
       phone: String(form.get('accountPhone') || '').trim(),
     };

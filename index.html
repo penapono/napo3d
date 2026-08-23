@@ -269,12 +269,28 @@
             >Nome completo<input name="accountName" autocomplete="name"
           /></label>
           <label
-            >E-mail<input name="accountEmail" type="email" autocomplete="email" required
-          /></label>
+            >E-mail<input
+              name="accountEmail"
+              type="email"
+              autocomplete="email"
+              inputmode="email"
+              required
+              pattern="^[^\s@]+@[^\s@]+\.[^\s@]+$"
+              title="Informe um e-mail válido, como nome@dominio.com"
+            />
+          </label>
           <label
             >Senha<input name="accountPassword" type="password" minlength="8" required
           /></label>
-          <label>Telefone<input name="accountPhone" autocomplete="tel" /></label>
+          <label id="account-phone-field" hidden
+            >Celular<input
+              name="accountPhone"
+              autocomplete="tel-national"
+              inputmode="tel"
+              maxlength="15"
+              placeholder="(11) 99999-9999"
+            />
+          </label>
           <button class="button button-primary" id="account-submit" type="submit">Entrar</button>
           <p class="form-status" id="account-page-status" role="status"></p>
         </form>
