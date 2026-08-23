@@ -204,6 +204,10 @@ a {
   border: 1px solid var(--line);
   color: var(--ink);
 }
+.hero-media {
+  display: grid;
+  gap: 18px;
+}
 .hero-art {
   background: #26312c;
   border-radius: 28px;
@@ -239,6 +243,13 @@ a {
   left: 30px;
   padding: 18px 20px;
   width: 230px;
+}
+.hero-art-caption {
+  bottom: auto;
+  left: auto;
+  max-width: 100%;
+  position: relative;
+  width: fit-content;
 }
 .art-card-main strong {
   display: block;
@@ -1366,11 +1377,9 @@ a {
   .hero-gif {
     object-fit: cover;
   }
-  .art-card-main {
-    bottom: 18px;
-    left: 18px;
+  .hero-art-caption {
     padding: 14px 16px;
-    width: calc(100% - 36px);
+    width: 100%;
   }
   .art-card-main strong {
     font-size: 18px;
