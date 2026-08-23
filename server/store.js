@@ -8,7 +8,7 @@ const EMPTY_STORE = {
   addresses: [],
   orders: [],
   idempotencyKeys: [],
-  emails: []
+  emails: [],
 };
 
 const STORE_LOCK_KEY = 3345103;
@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS users (
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'customer';
 
 CREATE TABLE IF NOT EXISTS sessions (
   token text PRIMARY KEY,
@@ -64,6 +66,10 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at timestamptz NOT NULL
 );
 
+ALTER TABLE orders ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_user_id_fkey;
+ALTER TABLE orders ADD CONSTRAINT orders_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+
 CREATE TABLE IF NOT EXISTS order_items (
   id text PRIMARY KEY,
   order_id text NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
@@ -99,15 +105,31 @@ ALTER TABLE emails ADD COLUMN IF NOT EXISTS sent_at timestamptz;
 ALTER TABLE emails ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0;
 ALTER TABLE emails ADD COLUMN IF NOT EXISTS last_error text;
 ALTER TABLE emails ADD COLUMN IF NOT EXISTS processing_started_at timestamptz;
+
+CREATE TABLE IF NOT EXISTS products (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  category text,
+  reference text,
+  summary text,
+  page integer,
+  options jsonb NOT NULL DEFAULT '[]',
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
 `;
 
 export function createMemoryStore(initialState = EMPTY_STORE) {
   let state = structuredClone({ ...EMPTY_STORE, ...initialState });
+  let products = structuredClone(initialState.products || []);
   let pending = Promise.resolve();
 
   function runExclusive(task) {
     const result = pending.then(task, task);
-    pending = result.then(() => undefined, () => undefined);
+    pending = result.then(
+      () => undefined,
+      () => undefined
+    );
     return result;
   }
 
@@ -130,12 +152,52 @@ export function createMemoryStore(initialState = EMPTY_STORE) {
         return structuredClone(state);
       });
     },
-    async close() {}
+    async close() {},
+    async listProducts() {
+      await pending;
+      return structuredClone(products).sort(
+        (left, right) =>
+          left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+      );
+    },
+    async getProduct(id) {
+      await pending;
+      const found = products.find((product) => product.id === id);
+      return found ? structuredClone(found) : null;
+    },
+    async createProduct(product) {
+      return runExclusive(async () => {
+        products.push(structuredClone(product));
+        return structuredClone(product);
+      });
+    },
+    async updateProduct(id, patch) {
+      return runExclusive(async () => {
+        const index = products.findIndex((product) => product.id === id);
+        if (index === -1) return null;
+        const next = { ...products[index], ...patch, id, updatedAt: new Date().toISOString() };
+        products[index] = next;
+        return structuredClone(next);
+      });
+    },
+    async deleteProduct(id) {
+      return runExclusive(async () => {
+        products = products.filter((product) => product.id !== id);
+      });
+    },
+    async seedProductsIfEmpty(seedList) {
+      return runExclusive(async () => {
+        if (products.length) return { seeded: 0 };
+        products = structuredClone(seedList);
+        return { seeded: seedList.length };
+      });
+    },
   };
 }
 
 export function createPostgresStore(options = {}) {
-  const connectionString = options.connectionString || process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
+  const connectionString =
+    options.connectionString || process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
   const pool = options.pool || new Pool({ connectionString });
   let initPromise = null;
 
@@ -201,9 +263,105 @@ export function createPostgresStore(options = {}) {
         }
       });
     },
+    async listProducts() {
+      return withClient(async (client) => {
+        const result = await client.query('SELECT * FROM products ORDER BY created_at ASC, id ASC');
+        return result.rows.map(mapProductRow);
+      });
+    },
+    async getProduct(id) {
+      return withClient(async (client) => {
+        const result = await client.query('SELECT * FROM products WHERE id = $1', [id]);
+        return result.rows[0] ? mapProductRow(result.rows[0]) : null;
+      });
+    },
+    async createProduct(product) {
+      return withClient(async (client) => {
+        await client.query(
+          `INSERT INTO products (id, name, category, reference, summary, page, options, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)`,
+          [
+            product.id,
+            product.name,
+            nullIfEmpty(product.category),
+            nullIfEmpty(product.reference),
+            nullIfEmpty(product.summary),
+            product.page ?? null,
+            JSON.stringify(product.options || []),
+            asTimestamp(product.createdAt),
+            asTimestamp(product.updatedAt),
+          ]
+        );
+        return product;
+      });
+    },
+    async updateProduct(id, patch) {
+      return withClient(async (client) => {
+        const existing = await client.query('SELECT * FROM products WHERE id = $1', [id]);
+        if (!existing.rows[0]) return null;
+        const next = {
+          ...mapProductRow(existing.rows[0]),
+          ...patch,
+          id,
+          updatedAt: new Date().toISOString(),
+        };
+        await client.query(
+          `UPDATE products
+             SET name = $2,
+                 category = $3,
+                 reference = $4,
+                 summary = $5,
+                 page = $6,
+                 options = $7::jsonb,
+                 updated_at = $8
+           WHERE id = $1`,
+          [
+            id,
+            next.name,
+            nullIfEmpty(next.category),
+            nullIfEmpty(next.reference),
+            nullIfEmpty(next.summary),
+            next.page ?? null,
+            JSON.stringify(next.options || []),
+            asTimestamp(next.updatedAt),
+          ]
+        );
+        return next;
+      });
+    },
+    async deleteProduct(id) {
+      return withClient(async (client) => {
+        await client.query('DELETE FROM products WHERE id = $1', [id]);
+      });
+    },
+    async seedProductsIfEmpty(seedList) {
+      return withClient(async (client) => {
+        const existing = await client.query('SELECT count(*)::int AS count FROM products');
+        if (existing.rows[0].count > 0) return { seeded: 0 };
+        for (const product of seedList) {
+          await client.query(
+            `INSERT INTO products (id, name, category, reference, summary, page, options, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
+             ON CONFLICT (id) DO NOTHING`,
+            [
+              product.id,
+              product.name,
+              nullIfEmpty(product.category),
+              nullIfEmpty(product.reference),
+              nullIfEmpty(product.summary),
+              product.page ?? null,
+              JSON.stringify(product.options || []),
+              asTimestamp(product.createdAt),
+              asTimestamp(product.updatedAt),
+            ]
+          );
+        }
+        return { seeded: seedList.length };
+      });
+    },
     async close() {
       await pool.end();
-    }
+    },
   };
 }
 
@@ -214,17 +372,25 @@ function withStoreDefaults(store) {
     addresses: Array.isArray(store?.addresses) ? store.addresses : [],
     orders: Array.isArray(store?.orders) ? store.orders : [],
     idempotencyKeys: Array.isArray(store?.idempotencyKeys) ? store.idempotencyKeys : [],
-    emails: Array.isArray(store?.emails) ? store.emails : []
+    emails: Array.isArray(store?.emails) ? store.emails : [],
   };
 }
 
 async function readStore(client) {
   const usersResult = await client.query('SELECT * FROM users ORDER BY created_at ASC, id ASC');
-  const sessionsResult = await client.query('SELECT * FROM sessions ORDER BY created_at ASC, token ASC');
-  const addressesResult = await client.query('SELECT * FROM addresses ORDER BY created_at ASC, id ASC');
+  const sessionsResult = await client.query(
+    'SELECT * FROM sessions ORDER BY created_at ASC, token ASC'
+  );
+  const addressesResult = await client.query(
+    'SELECT * FROM addresses ORDER BY created_at ASC, id ASC'
+  );
   const ordersResult = await client.query('SELECT * FROM orders ORDER BY created_at ASC, id ASC');
-  const orderItemsResult = await client.query('SELECT * FROM order_items ORDER BY order_id ASC, position ASC, id ASC');
-  const idempotencyResult = await client.query('SELECT * FROM idempotency_keys ORDER BY created_at ASC, id ASC');
+  const orderItemsResult = await client.query(
+    'SELECT * FROM order_items ORDER BY order_id ASC, position ASC, id ASC'
+  );
+  const idempotencyResult = await client.query(
+    'SELECT * FROM idempotency_keys ORDER BY created_at ASC, id ASC'
+  );
   const emailsResult = await client.query('SELECT * FROM emails ORDER BY created_at ASC, id ASC');
 
   const itemsByOrderId = new Map();
@@ -239,7 +405,7 @@ async function readStore(client) {
       unitWeightGrams: Number(row.unit_weight_grams),
       quantity: Number(row.quantity),
       unitPrice: Number(row.unit_price),
-      lineTotal: Number(row.line_total)
+      lineTotal: Number(row.line_total),
     });
     itemsByOrderId.set(row.order_id, items);
   }
@@ -251,13 +417,14 @@ async function readStore(client) {
       email: row.email,
       phone: undefinedIfNull(row.phone),
       passwordHash: row.password_hash,
+      role: row.role,
       createdAt: asIsoString(row.created_at),
-      updatedAt: asIsoString(row.updated_at)
+      updatedAt: asIsoString(row.updated_at),
     })),
     sessions: sessionsResult.rows.map((row) => ({
       token: row.token,
       userId: row.user_id,
-      createdAt: asIsoString(row.created_at)
+      createdAt: asIsoString(row.created_at),
     })),
     addresses: addressesResult.rows.map((row) => ({
       id: row.id,
@@ -273,11 +440,11 @@ async function readStore(client) {
       reference: undefinedIfNull(row.reference),
       isDefault: row.is_default,
       createdAt: asIsoString(row.created_at),
-      updatedAt: asIsoString(row.updated_at)
+      updatedAt: asIsoString(row.updated_at),
     })),
     orders: ordersResult.rows.map((row) => ({
       id: row.id,
-      userId: row.user_id,
+      userId: undefinedIfNull(row.user_id),
       status: row.status,
       customerName: row.customer_name,
       customerEmail: row.customer_email,
@@ -290,7 +457,7 @@ async function readStore(client) {
       productionEstimateHours: Number(row.production_estimate_hours),
       notes: undefinedIfNull(row.notes),
       createdAt: asIsoString(row.created_at),
-      updatedAt: asIsoString(row.updated_at)
+      updatedAt: asIsoString(row.updated_at),
     })),
     idempotencyKeys: idempotencyResult.rows.map((row) => ({
       id: row.id,
@@ -298,7 +465,7 @@ async function readStore(client) {
       userId: row.user_id,
       orderId: row.order_id,
       response: row.response_payload,
-      createdAt: asIsoString(row.created_at)
+      createdAt: asIsoString(row.created_at),
     })),
     emails: emailsResult.rows.map((row) => ({
       id: row.id,
@@ -309,8 +476,10 @@ async function readStore(client) {
       sentAt: row.sent_at ? asIsoString(row.sent_at) : undefined,
       attempts: Number(row.attempts || 0),
       lastError: undefinedIfNull(row.last_error),
-      processingStartedAt: row.processing_started_at ? asIsoString(row.processing_started_at) : undefined
-    }))
+      processingStartedAt: row.processing_started_at
+        ? asIsoString(row.processing_started_at)
+        : undefined,
+    })),
   };
 }
 
@@ -325,25 +494,27 @@ async function replaceStore(client, nextStore) {
 
   for (const user of nextStore.users) {
     await client.query(
-      `INSERT INTO users (id, name, email, phone, password_hash, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO users (id, name, email, phone, password_hash, role, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         user.id,
         user.name,
         user.email,
         nullIfEmpty(user.phone),
         user.passwordHash,
+        user.role || 'customer',
         asTimestamp(user.createdAt),
-        asTimestamp(user.updatedAt)
+        asTimestamp(user.updatedAt),
       ]
     );
   }
 
   for (const session of nextStore.sessions) {
-    await client.query(
-      'INSERT INTO sessions (token, user_id, created_at) VALUES ($1, $2, $3)',
-      [session.token, session.userId, asTimestamp(session.createdAt)]
-    );
+    await client.query('INSERT INTO sessions (token, user_id, created_at) VALUES ($1, $2, $3)', [
+      session.token,
+      session.userId,
+      asTimestamp(session.createdAt),
+    ]);
   }
 
   for (const address of nextStore.addresses) {
@@ -366,7 +537,7 @@ async function replaceStore(client, nextStore) {
         nullIfEmpty(address.reference),
         Boolean(address.isDefault),
         asTimestamp(address.createdAt),
-        asTimestamp(address.updatedAt)
+        asTimestamp(address.updatedAt),
       ]
     );
   }
@@ -377,10 +548,10 @@ async function replaceStore(client, nextStore) {
          id, user_id, status, customer_name, customer_email, customer_phone,
          address_snapshot, subtotal, shipping, total, production_estimate_hours,
          notes, created_at, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14)`,
       [
         order.id,
-        order.userId,
+        nullIfEmpty(order.userId),
         order.status,
         order.customerName,
         order.customerEmail,
@@ -392,7 +563,7 @@ async function replaceStore(client, nextStore) {
         Number(order.productionEstimateHours || 0),
         nullIfEmpty(order.notes),
         asTimestamp(order.createdAt),
-        asTimestamp(order.updatedAt)
+        asTimestamp(order.updatedAt),
       ]
     );
 
@@ -412,7 +583,7 @@ async function replaceStore(client, nextStore) {
           Number(item.unitWeightGrams || 0),
           Number(item.quantity || 0),
           Number(item.unitPrice || 0),
-          Number(item.lineTotal || 0)
+          Number(item.lineTotal || 0),
         ]
       );
     }
@@ -428,7 +599,7 @@ async function replaceStore(client, nextStore) {
         entry.userId,
         entry.orderId,
         JSON.stringify(entry.response || {}),
-        asTimestamp(entry.createdAt)
+        asTimestamp(entry.createdAt),
       ]
     );
   }
@@ -446,10 +617,24 @@ async function replaceStore(client, nextStore) {
         email.sentAt ? asTimestamp(email.sentAt) : null,
         Number(email.attempts || 0),
         nullIfEmpty(email.lastError),
-        email.processingStartedAt ? asTimestamp(email.processingStartedAt) : null
+        email.processingStartedAt ? asTimestamp(email.processingStartedAt) : null,
       ]
     );
   }
+}
+
+function mapProductRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    category: undefinedIfNull(row.category),
+    reference: undefinedIfNull(row.reference),
+    summary: undefinedIfNull(row.summary),
+    page: row.page == null ? undefined : Number(row.page),
+    options: row.options || [],
+    createdAt: asIsoString(row.created_at),
+    updatedAt: asIsoString(row.updated_at),
+  };
 }
 
 function nullIfEmpty(value) {

@@ -1,7 +1,7 @@
 export const PRICE_TIERS = [
   { label: 'Até 50 un.', maxQuantity: 50, rate: 375 },
   { label: '51 a 100 un.', maxQuantity: 100, rate: 325 },
-  { label: 'Mais de 100 un.', maxQuantity: Infinity, rate: 275 }
+  { label: 'Mais de 100 un.', maxQuantity: Infinity, rate: 275 },
 ];
 
 export const ADDRESS_REQUIRED_FIELDS = [
@@ -10,14 +10,26 @@ export const ADDRESS_REQUIRED_FIELDS = [
   'street',
   'number',
   'city',
-  'state'
+  'state',
 ];
 
 export const DEFAULT_PRODUCTION_TIME_MINUTES = 60;
 export const DEFAULT_MAX_ITEM_QUANTITY = 1000;
+export const USER_ROLES = ['customer', 'admin'];
+export const DEFAULT_USER_ROLE = 'customer';
+export const ORDER_STATUSES = [
+  'pending',
+  'confirmed',
+  'in_production',
+  'shipped',
+  'completed',
+  'cancelled',
+];
 
 export function normalizeEmail(value) {
-  return String(value || '').trim().toLowerCase();
+  return String(value || '')
+    .trim()
+    .toLowerCase();
 }
 
 export function digitsOnly(value) {
@@ -29,7 +41,10 @@ export function normalizePostalCode(value) {
 }
 
 export function normalizeState(value) {
-  return String(value || '').trim().toUpperCase().slice(0, 2);
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 export function normalizeOptionalText(value) {
@@ -39,6 +54,10 @@ export function normalizeOptionalText(value) {
 
 export function normalizeRequiredText(value) {
   return String(value || '').trim();
+}
+
+export function normalizeUserRole(value) {
+  return USER_ROLES.includes(value) ? value : DEFAULT_USER_ROLE;
 }
 
 export function normalizeAddressInput(address = {}) {
@@ -52,7 +71,7 @@ export function normalizeAddressInput(address = {}) {
     city: normalizeRequiredText(address.city),
     state: normalizeState(address.state),
     reference: normalizeOptionalText(address.reference),
-    isDefault: Boolean(address.isDefault)
+    isDefault: Boolean(address.isDefault),
   };
 }
 
@@ -60,20 +79,100 @@ export function validateAddressInput(address = {}) {
   const normalized = normalizeAddressInput(address);
   for (const field of ADDRESS_REQUIRED_FIELDS) {
     if (!normalized[field]) {
-      return { ok: false, code: 'INVALID_ADDRESS', message: `Campo obrigatório ausente: ${field}`, address: normalized };
+      return {
+        ok: false,
+        code: 'INVALID_ADDRESS',
+        message: `Campo obrigatório ausente: ${field}`,
+        address: normalized,
+      };
     }
   }
   if (normalized.postalCode.length !== 8) {
-    return { ok: false, code: 'INVALID_ADDRESS', message: 'CEP deve conter 8 dígitos.', address: normalized };
+    return {
+      ok: false,
+      code: 'INVALID_ADDRESS',
+      message: 'CEP deve conter 8 dígitos.',
+      address: normalized,
+    };
   }
   if (normalized.state.length !== 2) {
-    return { ok: false, code: 'INVALID_ADDRESS', message: 'UF deve conter 2 letras.', address: normalized };
+    return {
+      ok: false,
+      code: 'INVALID_ADDRESS',
+      message: 'UF deve conter 2 letras.',
+      address: normalized,
+    };
   }
   return { ok: true, address: normalized };
 }
 
+export function normalizeProductOptionInput(option = {}) {
+  return {
+    name: normalizeRequiredText(option.name),
+    url: normalizeOptionalText(option.url),
+    imageUrl: normalizeOptionalText(option.imageUrl),
+    source: normalizeOptionalText(option.source),
+    dims: normalizeOptionalText(option.dims),
+    time: normalizeOptionalText(option.time),
+    rating: normalizeOptionalText(option.rating),
+    material: normalizeOptionalText(option.material),
+    colors: normalizeOptionalText(option.colors),
+    ams: normalizeOptionalText(option.ams),
+    support: normalizeOptionalText(option.support),
+    weight: Number(option.weight),
+    weight_kind: normalizeOptionalText(option.weight_kind),
+    license: normalizeOptionalText(option.license),
+    notes: normalizeOptionalText(option.notes),
+    score: Number.isFinite(Number(option.score)) ? Number(option.score) : 0,
+    cost: Number.isFinite(Number(option.cost)) ? Number(option.cost) : undefined,
+    thumb: normalizeOptionalText(option.thumb),
+    free: Boolean(option.free),
+  };
+}
+
+export function validateProductInput(product = {}) {
+  const name = normalizeRequiredText(product.name);
+  if (!name) {
+    return { ok: false, code: 'INVALID_PRODUCT', message: 'Nome do produto é obrigatório.' };
+  }
+  const rawOptions = Array.isArray(product.options) ? product.options : [];
+  if (!rawOptions.length) {
+    return {
+      ok: false,
+      code: 'INVALID_PRODUCT',
+      message: 'Cadastre ao menos uma variação (opção).',
+    };
+  }
+  const options = rawOptions.map(normalizeProductOptionInput);
+  for (const option of options) {
+    if (!option.name) {
+      return { ok: false, code: 'INVALID_PRODUCT', message: 'Toda variação precisa de um nome.' };
+    }
+    if (!Number.isFinite(option.weight) || option.weight <= 0) {
+      return {
+        ok: false,
+        code: 'INVALID_PRODUCT',
+        message: `Peso inválido para a variação "${option.name}".`,
+      };
+    }
+  }
+  return {
+    ok: true,
+    product: {
+      name,
+      category: normalizeOptionalText(product.category) || '',
+      reference: normalizeOptionalText(product.reference) || '',
+      summary: normalizeOptionalText(product.summary) || '',
+      page: Number.isFinite(Number(product.page)) ? Number(product.page) : undefined,
+      options,
+    },
+  };
+}
+
 export function resolvePriceTier(quantity) {
-  return PRICE_TIERS.find((tier) => quantity <= tier.maxQuantity) || PRICE_TIERS[PRICE_TIERS.length - 1];
+  return (
+    PRICE_TIERS.find((tier) => quantity <= tier.maxQuantity) || PRICE_TIERS[PRICE_TIERS.length - 1]
+  );
 }
 
 export function weightInGrams(option) {
@@ -83,7 +182,7 @@ export function weightInGrams(option) {
 
 export function unitPriceFromWeight(weight, quantity) {
   if (!Number.isFinite(weight)) return null;
-  return Math.round(weight * resolvePriceTier(quantity).rate / 1000);
+  return Math.round((weight * resolvePriceTier(quantity).rate) / 1000);
 }
 
 export function productionTimeMinutes(product) {
@@ -92,7 +191,7 @@ export function productionTimeMinutes(product) {
 }
 
 export function lineProductionMinutes(product, quantity) {
-  return productionTimeMinutes(product) * quantity / 10;
+  return (productionTimeMinutes(product) * quantity) / 10;
 }
 
 export function buildQuote(items, resolveProduct, options = {}) {
@@ -105,7 +204,7 @@ export function buildQuote(items, resolveProduct, options = {}) {
       shipping: 0,
       total: 0,
       productionEstimateHours: 0,
-      productionEstimateMinutes: 0
+      productionEstimateMinutes: 0,
     };
   }
 
@@ -124,7 +223,9 @@ export function buildQuote(items, resolveProduct, options = {}) {
       throw error;
     }
 
-    const option = (product.options || []).find((candidate) => candidate.name === entry?.optionName);
+    const option = (product.options || []).find(
+      (candidate) => candidate.name === entry?.optionName
+    );
     if (!option) {
       const error = new Error(`Variação não encontrada: ${entry?.optionName}`);
       error.code = 'OPTION_NOT_FOUND';
@@ -154,12 +255,15 @@ export function buildQuote(items, resolveProduct, options = {}) {
       productionLineMinutes: productionMinutes,
       imageUrl: option.imageUrl || '',
       category: product.category || '',
-      reference: product.reference || ''
+      reference: product.reference || '',
     };
   });
 
   const subtotal = quotedItems.reduce((sum, item) => sum + item.lineTotal, 0);
-  const productionEstimateMinutes = quotedItems.reduce((sum, item) => sum + item.productionLineMinutes, 0);
+  const productionEstimateMinutes = quotedItems.reduce(
+    (sum, item) => sum + item.productionLineMinutes,
+    0
+  );
 
   return {
     items: quotedItems,
@@ -167,7 +271,7 @@ export function buildQuote(items, resolveProduct, options = {}) {
     shipping: 0,
     total: subtotal,
     productionEstimateHours: Number((productionEstimateMinutes / 60).toFixed(2)),
-    productionEstimateMinutes: Math.round(productionEstimateMinutes)
+    productionEstimateMinutes: Math.round(productionEstimateMinutes),
   };
 }
 
@@ -191,7 +295,10 @@ function productScore(product) {
 }
 
 function minProductPrice(product) {
-  return Math.min(...(product.options || [])
-    .map((option) => unitPriceFromWeight(weightInGrams(option), 1))
-    .filter((price) => Number.isFinite(price)), Infinity);
+  return Math.min(
+    ...(product.options || [])
+      .map((option) => unitPriceFromWeight(weightInGrams(option), 1))
+      .filter((price) => Number.isFinite(price)),
+    Infinity
+  );
 }

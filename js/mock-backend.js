@@ -2,7 +2,7 @@ import {
   buildQuote,
   normalizeEmail,
   sortProducts,
-  validateAddressInput
+  validateAddressInput,
 } from '../shared/contract.js';
 
 const DB_KEY = 'napo3d-mock-db';
@@ -17,13 +17,15 @@ function apiError(code, message, status = 400) {
 
 function readDb() {
   try {
-    return JSON.parse(localStorage.getItem(DB_KEY) || 'null') || {
-      users: [],
-      sessions: [],
-      addresses: [],
-      orders: [],
-      idempotencyKeys: []
-    };
+    return (
+      JSON.parse(localStorage.getItem(DB_KEY) || 'null') || {
+        users: [],
+        sessions: [],
+        addresses: [],
+        orders: [],
+        idempotencyKeys: [],
+      }
+    );
   } catch {
     return { users: [], sessions: [], addresses: [], orders: [], idempotencyKeys: [] };
   }
@@ -40,14 +42,16 @@ function sanitizeUser(user) {
     email: user.email,
     phone: user.phone,
     createdAt: user.createdAt,
-    updatedAt: user.updatedAt
+    updatedAt: user.updatedAt,
   };
 }
 
 async function sha256(value) {
   const bytes = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export function createMockBackend({ getToken, loadCatalog }) {
@@ -70,20 +74,29 @@ export function createMockBackend({ getToken, loadCatalog }) {
   return {
     async getProducts(params = {}) {
       const products = await loadCatalog();
-      const query = String(params.query || '').trim().toLowerCase();
+      const query = String(params.query || '')
+        .trim()
+        .toLowerCase();
       const category = String(params.category || '').trim();
       const page = Math.max(1, Number(params.page) || 1);
       const limit = Math.min(48, Math.max(1, Number(params.limit) || 12));
-      const filtered = sortProducts(products.filter((item) => {
-        if (category && category !== 'all' && item.category !== category) return false;
-        if (!query) return true;
-        const haystack = `${item.name} ${item.category} ${item.summary || ''} ${(item.options || []).map((option) => `${option.name} ${option.colors || ''}`).join(' ')}`.toLowerCase();
-        return haystack.includes(query);
-      }), params.sort || 'recommended');
+      const filtered = sortProducts(
+        products.filter((item) => {
+          if (category && category !== 'all' && item.category !== category) return false;
+          if (!query) return true;
+          const haystack =
+            `${item.name} ${item.category} ${item.summary || ''} ${(item.options || []).map((option) => `${option.name} ${option.colors || ''}`).join(' ')}`.toLowerCase();
+          return haystack.includes(query);
+        }),
+        params.sort || 'recommended'
+      );
       const total = filtered.length;
       const totalPages = Math.max(1, Math.ceil(total / limit));
       const start = (page - 1) * limit;
-      return { items: filtered.slice(start, start + limit), pagination: { page, limit, total, totalPages } };
+      return {
+        items: filtered.slice(start, start + limit),
+        pagination: { page, limit, total, totalPages },
+      };
     },
     async register(payload) {
       const db = readDb();
@@ -91,7 +104,8 @@ export function createMockBackend({ getToken, loadCatalog }) {
       if (!payload.name || !email || String(payload.password || '').length < 8) {
         throw apiError('INVALID_INPUT', 'Nome, e-mail e senha válida são obrigatórios.', 422);
       }
-      if (db.users.some((entry) => entry.email === email)) throw apiError('EMAIL_TAKEN', 'E-mail já cadastrado.', 409);
+      if (db.users.some((entry) => entry.email === email))
+        throw apiError('EMAIL_TAKEN', 'E-mail já cadastrado.', 409);
       const now = new Date().toISOString();
       const user = {
         id: crypto.randomUUID(),
@@ -100,7 +114,7 @@ export function createMockBackend({ getToken, loadCatalog }) {
         phone: String(payload.phone || '').trim() || undefined,
         passwordHash: await sha256(String(payload.password)),
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
       };
       const accessToken = crypto.randomUUID();
       db.users.push(user);
@@ -112,10 +126,16 @@ export function createMockBackend({ getToken, loadCatalog }) {
       const db = readDb();
       const email = normalizeEmail(payload.email);
       const passwordHash = await sha256(String(payload.password || ''));
-      const user = db.users.find((entry) => entry.email === email && entry.passwordHash === passwordHash);
+      const user = db.users.find(
+        (entry) => entry.email === email && entry.passwordHash === passwordHash
+      );
       if (!user) throw apiError('INVALID_CREDENTIALS', 'Credenciais inválidas.', 401);
       const accessToken = crypto.randomUUID();
-      db.sessions.push({ token: accessToken, userId: user.id, createdAt: new Date().toISOString() });
+      db.sessions.push({
+        token: accessToken,
+        userId: user.id,
+        createdAt: new Date().toISOString(),
+      });
       writeDb(db);
       return { user: sanitizeUser(user), accessToken };
     },
@@ -146,10 +166,12 @@ export function createMockBackend({ getToken, loadCatalog }) {
         ...validation.address,
         isDefault: ownAddresses.length ? Boolean(payload.isDefault) : true,
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
       };
       if (address.isDefault) {
-        db.addresses = db.addresses.map((entry) => entry.userId === user.id ? { ...entry, isDefault: false } : entry);
+        db.addresses = db.addresses.map((entry) =>
+          entry.userId === user.id ? { ...entry, isDefault: false } : entry
+        );
       }
       db.addresses.push(address);
       writeDb(db);
@@ -157,18 +179,22 @@ export function createMockBackend({ getToken, loadCatalog }) {
     },
     async updateAddress(addressId, payload) {
       const { db, user } = await getContext();
-      const current = db.addresses.find((entry) => entry.id === addressId && entry.userId === user.id);
+      const current = db.addresses.find(
+        (entry) => entry.id === addressId && entry.userId === user.id
+      );
       if (!current) throw apiError('ADDRESS_NOT_FOUND', 'Endereço não encontrado.', 404);
       const validation = validateAddressInput({ ...current, ...payload });
       if (!validation.ok) throw apiError(validation.code, validation.message, 422);
       const address = { ...current, ...validation.address, updatedAt: new Date().toISOString() };
-      db.addresses = db.addresses.map((entry) => entry.id === addressId ? address : entry);
+      db.addresses = db.addresses.map((entry) => (entry.id === addressId ? address : entry));
       writeDb(db);
       return { address };
     },
     async deleteAddress(addressId) {
       const { db, user } = await getContext();
-      const current = db.addresses.find((entry) => entry.id === addressId && entry.userId === user.id);
+      const current = db.addresses.find(
+        (entry) => entry.id === addressId && entry.userId === user.id
+      );
       if (!current) throw apiError('ADDRESS_NOT_FOUND', 'Endereço não encontrado.', 404);
       db.addresses = db.addresses.filter((entry) => entry.id !== addressId);
       const own = db.addresses.filter((entry) => entry.userId === user.id);
@@ -178,12 +204,18 @@ export function createMockBackend({ getToken, loadCatalog }) {
     },
     async setDefaultAddress(addressId) {
       const { db, user } = await getContext();
-      const current = db.addresses.find((entry) => entry.id === addressId && entry.userId === user.id);
+      const current = db.addresses.find(
+        (entry) => entry.id === addressId && entry.userId === user.id
+      );
       if (!current) throw apiError('ADDRESS_NOT_FOUND', 'Endereço não encontrado.', 404);
       let updated = null;
       db.addresses = db.addresses.map((entry) => {
         if (entry.userId !== user.id) return entry;
-        const next = { ...entry, isDefault: entry.id === addressId, updatedAt: new Date().toISOString() };
+        const next = {
+          ...entry,
+          isDefault: entry.id === addressId,
+          updatedAt: new Date().toISOString(),
+        };
         if (next.isDefault) updated = next;
         return next;
       });
@@ -195,17 +227,22 @@ export function createMockBackend({ getToken, loadCatalog }) {
       const hasAddress = payload.addressId
         ? db.addresses.some((entry) => entry.id === payload.addressId && entry.userId === user.id)
         : false;
-      if (!hasAddress) throw apiError('ADDRESS_REQUIRED', 'Selecione ou preencha um endereço.', 422);
+      if (!hasAddress)
+        throw apiError('ADDRESS_REQUIRED', 'Selecione ou preencha um endereço.', 422);
       return { quote: await resolveQuote(payload.items) };
     },
     async createOrder(payload) {
       const { db, user } = await getContext();
       const idempotencyKey = String(payload.idempotencyKey || '').trim() || null;
       if (idempotencyKey) {
-        const existing = db.idempotencyKeys.find((entry) => entry.userId === user.id && entry.key === idempotencyKey);
+        const existing = db.idempotencyKeys.find(
+          (entry) => entry.userId === user.id && entry.key === idempotencyKey
+        );
         if (existing) return existing.response;
       }
-      const address = db.addresses.find((entry) => entry.id === payload.addressId && entry.userId === user.id);
+      const address = db.addresses.find(
+        (entry) => entry.id === payload.addressId && entry.userId === user.id
+      );
       if (!address) throw apiError('ADDRESS_REQUIRED', 'Selecione ou preencha um endereço.', 422);
       const quote = await resolveQuote(payload.items);
       const orderId = crypto.randomUUID();
@@ -227,14 +264,14 @@ export function createMockBackend({ getToken, loadCatalog }) {
           unitWeightGrams: item.unitWeightGrams,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
-          lineTotal: item.lineTotal
+          lineTotal: item.lineTotal,
         })),
         subtotal: quote.subtotal,
         shipping: quote.shipping,
         total: quote.total,
         productionEstimateHours: quote.productionEstimateHours,
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
       };
       const response = {
         order: {
@@ -245,11 +282,12 @@ export function createMockBackend({ getToken, loadCatalog }) {
           shipping: order.shipping,
           total: order.total,
           productionEstimateHours: order.productionEstimateHours,
-          createdAt: order.createdAt
-        }
+          createdAt: order.createdAt,
+        },
       };
       db.orders.push(order);
-      if (idempotencyKey) db.idempotencyKeys.push({ key: idempotencyKey, userId: user.id, response });
+      if (idempotencyKey)
+        db.idempotencyKeys.push({ key: idempotencyKey, userId: user.id, response });
       writeDb(db);
       return response;
     },
@@ -258,8 +296,8 @@ export function createMockBackend({ getToken, loadCatalog }) {
       return {
         orders: db.orders
           .filter((entry) => entry.userId === user.id)
-          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
       };
-    }
+    },
   };
 }

@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Painel administrativo | napo3d</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./css/styles.css" />
+    <link rel="stylesheet" href="./css/admin.css" />
+  </head>
+
+  <body>
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <a class="brand" href="./index.html" aria-label="Voltar à loja">
+          <span class="brand-mark">3D</span>
+          <span>Painel administrativo</span>
+        </a>
+        <nav aria-label="Navegação do painel">
+          <a href="./index.html">Ver loja</a>
+          <button class="nav-account" id="admin-logout" type="button" hidden>Sair</button>
+        </nav>
+      </div>
+    </header>
+
+    <main class="store-page">
+      <div class="container store-page-inner admin-inner">
+        <p class="form-status" id="admin-guard-status" role="status">Verificando acesso...</p>
+
+        <div id="admin-app" hidden>
+          <span class="eyebrow">Área restrita</span>
+          <h1>Painel administrativo</h1>
+          <div class="segmented-controls" id="admin-tabs">
+            <button class="segmented-button is-active" data-admin-tab="products" type="button">
+              Produtos
+            </button>
+            <button class="segmented-button" data-admin-tab="orders" type="button">Pedidos</button>
+            <button class="segmented-button" data-admin-tab="users" type="button">Usuários</button>
+          </div>
+
+          <section class="info-section admin-panel" id="admin-panel-products">
+            <div class="section-heading">
+              <h2>Produtos</h2>
+              <button class="button button-primary" id="admin-product-new" type="button">
+                Novo produto
+              </button>
+            </div>
+            <div class="info-list admin-list" id="admin-products-list"></div>
+          </section>
+
+          <section class="info-section admin-panel" id="admin-panel-orders" hidden>
+            <div class="section-heading">
+              <h2>Pedidos</h2>
+              <label class="sort-box">
+                <span>Status</span>
+                <select id="admin-orders-filter">
+                  <option value="">Todos</option>
+                  <option value="pending">Pendente</option>
+                  <option value="confirmed">Confirmado</option>
+                  <option value="in_production">Em produção</option>
+                  <option value="shipped">Enviado</option>
+                  <option value="completed">Concluído</option>
+                  <option value="cancelled">Cancelado</option>
+                </select>
+              </label>
+            </div>
+            <div class="info-list admin-list" id="admin-orders-list"></div>
+          </section>
+
+          <section class="info-section admin-panel" id="admin-panel-users" hidden>
+            <div class="section-heading">
+              <h2>Usuários</h2>
+              <label class="search-box admin-search-box">
+                <span aria-hidden="true">⌕</span>
+                <input
+                  id="admin-users-search"
+                  type="search"
+                  placeholder="Buscar por nome ou e-mail"
+                  aria-label="Buscar usuários"
+                />
+              </label>
+            </div>
+            <div class="info-list admin-list" id="admin-users-list"></div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <dialog class="quantity-dialog admin-dialog" id="admin-product-dialog">
+      <button
+        class="dialog-close"
+        id="admin-product-dialog-close"
+        type="button"
+        aria-label="Fechar"
+      >
+        ×
+      </button>
+      <span class="eyebrow" id="admin-product-dialog-eyebrow">Novo produto</span>
+      <h2 id="admin-product-dialog-title">Cadastrar produto</h2>
+      <form id="admin-product-form">
+        <label>Nome<input name="name" required /></label>
+        <div class="form-row">
+          <label>Categoria<input name="category" /></label>
+          <label>Página do catálogo<input name="page" type="number" min="1" step="1" /></label>
+        </div>
+        <label>Resumo<input name="summary" /></label>
+        <label>Imagem de referência (URL ou data URI)<input name="reference" /></label>
+        <div class="admin-options-heading">
+          <span>Variações</span>
+          <button class="button button-secondary" id="admin-option-add" type="button">
+            Adicionar variação
+          </button>
+        </div>
+        <div id="admin-options-list"></div>
+        <p class="form-status" id="admin-product-status" role="status"></p>
+        <div class="inline-actions">
+          <button class="button button-primary" type="submit">Salvar produto</button>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="admin-option-row-template">
+      <div class="admin-option-row">
+        <div class="form-row">
+          <label>Nome da variação<input data-option-field="name" required /></label>
+          <label
+            >Peso (g)<input data-option-field="weight" type="number" min="1" step="1" required
+          /></label>
+        </div>
+        <div class="form-row">
+          <label>Cor(es)<input data-option-field="colors" /></label>
+          <label>Pontuação<input data-option-field="score" type="number" step="1" /></label>
+        </div>
+        <div class="form-row">
+          <label>URL<input data-option-field="url" /></label>
+          <label>URL da imagem<input data-option-field="imageUrl" /></label>
+        </div>
+        <button class="button button-secondary admin-option-remove" type="button">
+          Remover variação
+        </button>
+      </div>
+    </template>
+
+    <dialog class="quantity-dialog admin-dialog" id="admin-order-dialog">
+      <button class="dialog-close" id="admin-order-dialog-close" type="button" aria-label="Fechar">
+        ×
+      </button>
+      <span class="eyebrow">Pedido</span>
+      <h2 id="admin-order-dialog-title">Detalhe do pedido</h2>
+      <div class="info-list" id="admin-order-detail"></div>
+      <label
+        >Status
+        <select id="admin-order-status-select">
+          <option value="pending">Pendente</option>
+          <option value="confirmed">Confirmado</option>
+          <option value="in_production">Em produção</option>
+          <option value="shipped">Enviado</option>
+          <option value="completed">Concluído</option>
+          <option value="cancelled">Cancelado</option>
+        </select>
+      </label>
+      <p class="form-status" id="admin-order-status-message" role="status"></p>
+      <div class="inline-actions">
+        <button class="button button-primary" id="admin-order-status-save" type="button">
+          Salvar status
+        </button>
+      </div>
+    </dialog>
+
+    <dialog class="quantity-dialog admin-dialog" id="admin-user-dialog">
+      <button class="dialog-close" id="admin-user-dialog-close" type="button" aria-label="Fechar">
+        ×
+      </button>
+      <span class="eyebrow">Usuário</span>
+      <h2 id="admin-user-dialog-title">Detalhe do usuário</h2>
+      <div class="info-list" id="admin-user-profile"></div>
+      <label>Nome<input id="admin-user-name" /></label>
+      <label>Telefone<input id="admin-user-phone" /></label>
+      <label
+        >Papel
+        <select id="admin-user-role">
+          <option value="customer">Cliente</option>
+          <option value="admin">Administrador</option>
+        </select>
+      </label>
+      <p class="form-status" id="admin-user-status" role="status"></p>
+      <div class="inline-actions">
+        <button class="button button-primary" id="admin-user-save" type="button">
+          Salvar alterações
+        </button>
+        <button class="button button-danger" id="admin-user-delete" type="button">
+          Excluir usuário
+        </button>
+      </div>
+      <section class="info-section">
+        <div class="section-heading"><h2>Endereços</h2></div>
+        <div class="info-list" id="admin-user-addresses"></div>
+      </section>
+      <section class="info-section">
+        <div class="section-heading"><h2>Pedidos</h2></div>
+        <div class="info-list" id="admin-user-orders"></div>
+      </section>
+    </dialog>
+
+    <script src="./js/admin.js" type="module"></script>
+  </body>
+</html>

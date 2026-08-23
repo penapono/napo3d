@@ -1,0 +1,6 @@
+node_modules
+.git
+.pnpm-store
+.code-review-graph
+.claude
+.data

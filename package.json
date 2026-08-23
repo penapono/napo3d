@@ -13,12 +13,15 @@
     "start:back": "node ./server/index.js",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
+    "format": "prettier --write \"**/*.{js,css,html}\"",
+    "format:check": "prettier --check \"**/*.{js,css,html}\"",
     "test": "node --test"
   },
   "dependencies": {
     "pg": "^8.16.3"
   },
   "devDependencies": {
+    "prettier": "^3.9.6",
     "serve": "^14.2.4"
   }
 }

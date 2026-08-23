@@ -5,7 +5,7 @@ import {
   buildCustomerConfirmationEmail,
   buildInternalOrderEmail,
   escapeHtml,
-  processPendingEmails
+  processPendingEmails,
 } from '../server/mailer.js';
 
 function sampleOrder(overrides = {}) {
@@ -20,7 +20,7 @@ function sampleOrder(overrides = {}) {
       number: '10',
       city: 'Campinas',
       state: 'SP',
-      postalCode: '13010111'
+      postalCode: '13010111',
     },
     items: [
       {
@@ -29,20 +29,23 @@ function sampleOrder(overrides = {}) {
         unitWeightGrams: 40,
         quantity: 10,
         unitPrice: 15,
-        lineTotal: 150
-      }
+        lineTotal: 150,
+      },
     ],
     subtotal: 150,
     shipping: 0,
     total: 150,
     productionEstimateHours: 1,
     notes: '',
-    ...overrides
+    ...overrides,
   };
 }
 
 test('escapeHtml neutralizes HTML special characters', () => {
-  assert.equal(escapeHtml('<b>"x" & \'y\'</b>'), '&lt;b&gt;&quot;x&quot; &amp; &#39;y&#39;&lt;/b&gt;');
+  assert.equal(
+    escapeHtml('<b>"x" & \'y\'</b>'),
+    '&lt;b&gt;&quot;x&quot; &amp; &#39;y&#39;&lt;/b&gt;'
+  );
 });
 
 test('buildInternalOrderEmail escapes customer-controlled text', () => {
@@ -66,7 +69,7 @@ test('processPendingEmails skips sending when the mailer is not configured', asy
       type: 'customer_confirmation',
       to: 'ana@example.com',
       orderId: 'order-1',
-      createdAt: new Date(0).toISOString()
+      createdAt: new Date(0).toISOString(),
     });
     return nextStore;
   });
@@ -88,14 +91,14 @@ test('processPendingEmails sends pending emails and marks them sent', async () =
         type: 'customer_confirmation',
         to: 'ana@example.com',
         orderId: 'order-1',
-        createdAt: new Date(0).toISOString()
+        createdAt: new Date(0).toISOString(),
       },
       {
         id: 'email-2',
         type: 'internal_order',
         to: 'owner@example.com',
         orderId: 'order-1',
-        createdAt: new Date(0).toISOString()
+        createdAt: new Date(0).toISOString(),
       }
     );
     return nextStore;
@@ -111,7 +114,7 @@ test('processPendingEmails sends pending emails and marks them sent', async () =
     configured: true,
     apiKey: 'test-key',
     from: 'pedidos@napo3d.shop',
-    orderRecipient: 'owner@example.com'
+    orderRecipient: 'owner@example.com',
   };
   const result = await processPendingEmails(store, { config, fetchImpl });
 
@@ -131,7 +134,7 @@ test('processPendingEmails records the error and keeps the email pending on fail
       type: 'customer_confirmation',
       to: 'ana@example.com',
       orderId: 'order-1',
-      createdAt: new Date(0).toISOString()
+      createdAt: new Date(0).toISOString(),
     });
     return nextStore;
   });
@@ -141,7 +144,7 @@ test('processPendingEmails records the error and keeps the email pending on fail
     configured: true,
     apiKey: 'test-key',
     from: 'pedidos@napo3d.shop',
-    orderRecipient: 'owner@example.com'
+    orderRecipient: 'owner@example.com',
   };
   const result = await processPendingEmails(store, { config, fetchImpl });
 
@@ -162,7 +165,7 @@ test('processPendingEmails does not send the same email twice when workers overl
       type: 'customer_confirmation',
       to: 'ana@example.com',
       orderId: 'order-1',
-      createdAt: new Date(0).toISOString()
+      createdAt: new Date(0).toISOString(),
     });
     return nextStore;
   });
@@ -182,7 +185,7 @@ test('processPendingEmails does not send the same email twice when workers overl
     configured: true,
     apiKey: 'test-key',
     from: 'pedidos@napo3d.shop',
-    orderRecipient: 'owner@example.com'
+    orderRecipient: 'owner@example.com',
   };
 
   const workerA = processPendingEmails(store, { config, fetchImpl });
@@ -209,7 +212,7 @@ test('processPendingEmails retries emails with stale processing claims', async (
       to: 'ana@example.com',
       orderId: 'order-1',
       createdAt: new Date(0).toISOString(),
-      processingStartedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, 0)).toISOString()
+      processingStartedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, 0)).toISOString(),
     });
     return nextStore;
   });
@@ -223,13 +226,13 @@ test('processPendingEmails retries emails with stale processing claims', async (
     configured: true,
     apiKey: 'test-key',
     from: 'pedidos@napo3d.shop',
-    orderRecipient: 'owner@example.com'
+    orderRecipient: 'owner@example.com',
   };
 
   const result = await processPendingEmails(store, {
     config,
     fetchImpl,
-    now: new Date(Date.UTC(2026, 0, 1, 0, 10, 0))
+    now: new Date(Date.UTC(2026, 0, 1, 0, 10, 0)),
   });
 
   assert.equal(result.sent, 1);

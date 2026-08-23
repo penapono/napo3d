@@ -5,11 +5,15 @@ import crypto from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   buildQuote,
+  normalizeUserRole,
   normalizeAddressInput,
   normalizeEmail,
+  ORDER_STATUSES,
   productionTimeMinutes,
   sortProducts,
-  validateAddressInput
+  USER_ROLES,
+  validateAddressInput,
+  validateProductInput,
 } from '../shared/contract.js';
 import { processPendingEmails, resolveMailerConfig } from './mailer.js';
 import { createPostgresStore, DEFAULT_DATABASE_URL } from './store.js';
@@ -17,32 +21,58 @@ import { createPostgresStore, DEFAULT_DATABASE_URL } from './store.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 
-const DEFAULT_CORS_ORIGINS = [
-  'http://localhost:3000',
-  'http://127.0.0.1:3000'
-];
+const DEFAULT_CORS_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
 
 export function createApp(options = {}) {
   const rootDir = options.rootDir || projectRoot;
-  const store = options.store || createPostgresStore({
-    connectionString: options.databaseUrl || process.env.DATABASE_URL || DEFAULT_DATABASE_URL
-  });
-  const catalogPath = path.join(rootDir, 'data', 'models.json');
+  const store =
+    options.store ||
+    createPostgresStore({
+      connectionString: options.databaseUrl || process.env.DATABASE_URL || DEFAULT_DATABASE_URL,
+    });
+  const catalogSeedPath = path.join(rootDir, 'data', 'models.json');
   const corsOrigins = resolveCorsOrigins(options.corsOrigins);
   const mailerConfig = options.mailerConfig || resolveMailerConfig();
   const rateLimits = new Map();
 
   const catalogState = {
     loadedAt: 0,
-    items: []
+    items: [],
   };
+  let seedCatalogPromise = null;
+
+  async function seedCatalogIfNeeded() {
+    const raw = await readFile(catalogSeedPath, 'utf8');
+    const now = new Date().toISOString();
+    const seedProducts = JSON.parse(raw).map((product) => ({
+      ...product,
+      createdAt: now,
+      updatedAt: now,
+    }));
+    const result = await store.seedProductsIfEmpty(seedProducts);
+    if (result.seeded) {
+      console.log(`[catalog] seeded ${result.seeded} products from data/models.json`);
+    }
+  }
+
+  async function ensureStoreReady() {
+    await store.init?.();
+    if (!seedCatalogPromise) {
+      seedCatalogPromise = seedCatalogIfNeeded();
+    }
+    await seedCatalogPromise;
+  }
+
+  function invalidateCatalogCache() {
+    catalogState.loadedAt = 0;
+    catalogState.items = [];
+  }
 
   async function loadCatalog() {
     if (catalogState.items.length && Date.now() - catalogState.loadedAt < 5_000) {
       return catalogState.items;
     }
-    const raw = await readFile(catalogPath, 'utf8');
-    catalogState.items = JSON.parse(raw);
+    catalogState.items = await store.listProducts();
     catalogState.loadedAt = Date.now();
     return catalogState.items;
   }
@@ -54,7 +84,7 @@ export function createApp(options = {}) {
   function writeJson(response, status, payload) {
     response.writeHead(status, {
       'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': 'no-store'
+      'Cache-Control': 'no-store',
     });
     response.end(JSON.stringify(payload));
   }
@@ -67,7 +97,7 @@ export function createApp(options = {}) {
   function writeText(response, status, message) {
     response.writeHead(status, {
       'Content-Type': 'text/plain; charset=utf-8',
-      'Cache-Control': 'no-store'
+      'Cache-Control': 'no-store',
     });
     response.end(message);
   }
@@ -88,7 +118,10 @@ export function createApp(options = {}) {
 
   function applyDefaultHeaders(request, response) {
     applyCors(request, response);
-    response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Idempotency-Key');
+    response.setHeader(
+      'Access-Control-Allow-Headers',
+      'Authorization, Content-Type, Idempotency-Key'
+    );
     response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   }
 
@@ -113,8 +146,9 @@ export function createApp(options = {}) {
       name: user.name,
       email: user.email,
       phone: user.phone,
+      role: normalizeUserRole(user.role),
       createdAt: user.createdAt,
-      updatedAt: user.updatedAt
+      updatedAt: user.updatedAt,
     };
   }
 
@@ -160,6 +194,16 @@ export function createApp(options = {}) {
     return sessionUser;
   }
 
+  async function requireAdmin(request, response) {
+    const sessionUser = await requireUser(request, response);
+    if (!sessionUser) return null;
+    if (normalizeUserRole(sessionUser.user.role) !== 'admin') {
+      errorResponse(request, response, 403, 'FORBIDDEN', 'Acesso restrito a administradores.');
+      return null;
+    }
+    return sessionUser;
+  }
+
   function checkRateLimit(key, limit, windowMs) {
     const now = Date.now();
     const bucket = rateLimits.get(key) || [];
@@ -176,7 +220,9 @@ export function createApp(options = {}) {
   }
 
   function matchesOwnAddress(addresses, userId, addressId) {
-    return addresses.find((address) => address.id === addressId && address.userId === userId) || null;
+    return (
+      addresses.find((address) => address.id === addressId && address.userId === userId) || null
+    );
   }
 
   async function resolveOrderAddress(payload, userId, currentStore) {
@@ -201,11 +247,13 @@ export function createApp(options = {}) {
         ...validation.address,
         id: crypto.randomUUID(),
         userId,
-        isDefault: false
+        isDefault: false,
       };
     }
 
-    const fallback = currentStore.addresses.find((address) => address.userId === userId && address.isDefault);
+    const fallback = currentStore.addresses.find(
+      (address) => address.userId === userId && address.isDefault
+    );
     if (!fallback) {
       const error = new Error('Endereço obrigatório.');
       error.code = 'ADDRESS_REQUIRED';
@@ -227,20 +275,20 @@ export function createApp(options = {}) {
         type: 'internal_order',
         to: mailerConfig.orderRecipient,
         orderId: order.id,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       },
       {
         id: crypto.randomUUID(),
         type: 'customer_confirmation',
         to: order.customerEmail,
         orderId: order.id,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       }
     );
   }
 
   async function handleApi(request, response, pathname) {
-    await store.init?.();
+    await ensureStoreReady();
 
     if (request.method === 'GET' && pathname === '/api/health') {
       writeJson(response, 200, { status: 'ok' });
@@ -250,25 +298,31 @@ export function createApp(options = {}) {
     if (request.method === 'GET' && pathname === '/api/products') {
       const catalog = await loadCatalog();
       const url = new URL(request.url, 'http://localhost');
-      const query = String(url.searchParams.get('query') || '').trim().toLowerCase();
+      const query = String(url.searchParams.get('query') || '')
+        .trim()
+        .toLowerCase();
       const category = String(url.searchParams.get('category') || '').trim();
       const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
       const limit = Math.min(48, Math.max(1, Number(url.searchParams.get('limit')) || 12));
       const sort = String(url.searchParams.get('sort') || 'recommended');
 
-      const filtered = sortProducts(catalog.filter((product) => {
-        if (category && category !== 'all' && product.category !== category) return false;
-        if (!query) return true;
-        const haystack = `${product.name} ${product.category} ${product.summary || ''} ${(product.options || []).map((option) => `${option.name} ${option.colors || ''}`).join(' ')}`.toLowerCase();
-        return haystack.includes(query);
-      }), sort);
+      const filtered = sortProducts(
+        catalog.filter((product) => {
+          if (category && category !== 'all' && product.category !== category) return false;
+          if (!query) return true;
+          const haystack =
+            `${product.name} ${product.category} ${product.summary || ''} ${(product.options || []).map((option) => `${option.name} ${option.colors || ''}`).join(' ')}`.toLowerCase();
+          return haystack.includes(query);
+        }),
+        sort
+      );
 
       const total = filtered.length;
       const totalPages = Math.max(1, Math.ceil(total / limit));
       const offset = (page - 1) * limit;
       writeJson(response, 200, {
         items: filtered.slice(offset, offset + limit),
-        pagination: { page, limit, total, totalPages }
+        pagination: { page, limit, total, totalPages },
       });
       return;
     }
@@ -285,6 +339,80 @@ export function createApp(options = {}) {
       return;
     }
 
+    if (request.method === 'GET' && pathname === '/api/admin/products') {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      const products = await loadCatalog();
+      writeJson(response, 200, { products: sortProducts(products, 'name') });
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/api/admin/products') {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      const body = await parseBody(request);
+      const validation = validateProductInput(body);
+      if (!validation.ok) {
+        errorResponse(request, response, 422, validation.code, validation.message);
+        return;
+      }
+      const now = new Date().toISOString();
+      const product = {
+        id: crypto.randomUUID(),
+        ...validation.product,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await store.createProduct(product);
+      invalidateCatalogCache();
+      writeJson(response, 201, { product });
+      return;
+    }
+
+    if (request.method === 'GET' && pathname.startsWith('/api/admin/products/')) {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      const productId = decodeURIComponent(pathname.split('/').pop());
+      const product = await store.getProduct(productId);
+      if (!product) {
+        errorResponse(request, response, 404, 'PRODUCT_NOT_FOUND', 'Produto não encontrado.');
+        return;
+      }
+      writeJson(response, 200, { product });
+      return;
+    }
+
+    if (request.method === 'PATCH' && pathname.startsWith('/api/admin/products/')) {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      const productId = decodeURIComponent(pathname.split('/').pop());
+      const existing = await store.getProduct(productId);
+      if (!existing) {
+        errorResponse(request, response, 404, 'PRODUCT_NOT_FOUND', 'Produto não encontrado.');
+        return;
+      }
+      const body = await parseBody(request);
+      const validation = validateProductInput({ ...existing, ...body });
+      if (!validation.ok) {
+        errorResponse(request, response, 422, validation.code, validation.message);
+        return;
+      }
+      const product = await store.updateProduct(productId, validation.product);
+      invalidateCatalogCache();
+      writeJson(response, 200, { product });
+      return;
+    }
+
+    if (request.method === 'DELETE' && pathname.startsWith('/api/admin/products/')) {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      const productId = decodeURIComponent(pathname.split('/').pop());
+      await store.deleteProduct(productId);
+      invalidateCatalogCache();
+      writeNoContent(response);
+      return;
+    }
+
     if (request.method === 'POST' && pathname === '/api/auth/register') {
       const ip = requestIp(request);
       if (!checkRateLimit(`register:${ip}`, 10, 15 * 60 * 1000)) {
@@ -295,7 +423,13 @@ export function createApp(options = {}) {
       const email = normalizeEmail(body.email);
       const password = String(body.password || '');
       if (!body.name || !email || password.length < 8) {
-        errorResponse(request, response, 422, 'INVALID_INPUT', 'Nome, e-mail e senha válida são obrigatórios.');
+        errorResponse(
+          request,
+          response,
+          422,
+          'INVALID_INPUT',
+          'Nome, e-mail e senha válida são obrigatórios.'
+        );
         return;
       }
       const createdAt = new Date().toISOString();
@@ -305,8 +439,9 @@ export function createApp(options = {}) {
         email,
         phone: String(body.phone || '').trim() || undefined,
         passwordHash: passwordHash(password),
+        role: 'customer',
         createdAt,
-        updatedAt: createdAt
+        updatedAt: createdAt,
       };
 
       const token = createToken();
@@ -372,7 +507,9 @@ export function createApp(options = {}) {
     if (request.method === 'GET' && pathname === '/api/me/addresses') {
       const sessionUser = await requireUser(request, response);
       if (!sessionUser) return;
-      const addresses = sessionUser.store.addresses.filter((entry) => entry.userId === sessionUser.user.id);
+      const addresses = sessionUser.store.addresses.filter(
+        (entry) => entry.userId === sessionUser.user.id
+      );
       writeJson(response, 200, { addresses });
       return;
     }
@@ -392,14 +529,18 @@ export function createApp(options = {}) {
         id: crypto.randomUUID(),
         userId: sessionUser.user.id,
         ...validation.address,
-        isDefault: Boolean(body.isDefault)
+        isDefault: Boolean(body.isDefault),
       };
 
       await store.update((currentStore) => {
-        const existing = currentStore.addresses.filter((entry) => entry.userId === sessionUser.user.id);
+        const existing = currentStore.addresses.filter(
+          (entry) => entry.userId === sessionUser.user.id
+        );
         if (!existing.length) address.isDefault = true;
         if (address.isDefault) {
-          currentStore.addresses = currentStore.addresses.map((entry) => entry.userId === sessionUser.user.id ? { ...entry, isDefault: false } : entry);
+          currentStore.addresses = currentStore.addresses.map((entry) =>
+            entry.userId === sessionUser.user.id ? { ...entry, isDefault: false } : entry
+          );
         }
         currentStore.addresses.push({ ...address, createdAt: now, updatedAt: now });
         return currentStore;
@@ -415,7 +556,11 @@ export function createApp(options = {}) {
       const body = await parseBody(request);
       let updatedAddress = null;
       await store.update((currentStore) => {
-        const currentAddress = matchesOwnAddress(currentStore.addresses, sessionUser.user.id, addressId);
+        const currentAddress = matchesOwnAddress(
+          currentStore.addresses,
+          sessionUser.user.id,
+          addressId
+        );
         if (!currentAddress) {
           const error = new Error('Endereço não encontrado.');
           error.code = 'ADDRESS_NOT_FOUND';
@@ -431,9 +576,11 @@ export function createApp(options = {}) {
         updatedAddress = {
           ...currentAddress,
           ...validation.address,
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
         };
-        currentStore.addresses = currentStore.addresses.map((entry) => entry.id === currentAddress.id ? updatedAddress : entry);
+        currentStore.addresses = currentStore.addresses.map((entry) =>
+          entry.id === currentAddress.id ? updatedAddress : entry
+        );
         return currentStore;
       });
       writeJson(response, 200, { address: updatedAddress });
@@ -452,7 +599,9 @@ export function createApp(options = {}) {
           throw error;
         }
         currentStore.addresses = currentStore.addresses.filter((entry) => entry.id !== target.id);
-        const ownAddresses = currentStore.addresses.filter((entry) => entry.userId === sessionUser.user.id);
+        const ownAddresses = currentStore.addresses.filter(
+          (entry) => entry.userId === sessionUser.user.id
+        );
         if (target.isDefault && ownAddresses.length) {
           ownAddresses[0].isDefault = true;
         }
@@ -462,7 +611,11 @@ export function createApp(options = {}) {
       return;
     }
 
-    if (request.method === 'POST' && pathname.endsWith('/default') && pathname.startsWith('/api/me/addresses/')) {
+    if (
+      request.method === 'POST' &&
+      pathname.endsWith('/default') &&
+      pathname.startsWith('/api/me/addresses/')
+    ) {
       const sessionUser = await requireUser(request, response);
       if (!sessionUser) return;
       const [, , , , addressId] = pathname.split('/');
@@ -476,7 +629,11 @@ export function createApp(options = {}) {
         }
         currentStore.addresses = currentStore.addresses.map((entry) => {
           if (entry.userId !== sessionUser.user.id) return entry;
-          const next = { ...entry, isDefault: entry.id === target.id, updatedAt: new Date().toISOString() };
+          const next = {
+            ...entry,
+            isDefault: entry.id === target.id,
+            updatedAt: new Date().toISOString(),
+          };
           if (next.isDefault) defaultAddress = next;
           return next;
         });
@@ -497,7 +654,13 @@ export function createApp(options = {}) {
           ? normalizeAddressInput(body.address)
           : null;
       if (!address) {
-        errorResponse(request, response, 422, 'ADDRESS_REQUIRED', 'Selecione ou preencha um endereço.');
+        errorResponse(
+          request,
+          response,
+          422,
+          'ADDRESS_REQUIRED',
+          'Selecione ou preencha um endereço.'
+        );
         return;
       }
       const quote = await buildOrderQuote(body.items);
@@ -519,7 +682,9 @@ export function createApp(options = {}) {
       try {
         const currentStore = await store.read();
         if (idempotencyKey) {
-          const previous = currentStore.idempotencyKeys.find((entry) => entry.userId === sessionUser.user.id && entry.key === idempotencyKey);
+          const previous = currentStore.idempotencyKeys.find(
+            (entry) => entry.userId === sessionUser.user.id && entry.key === idempotencyKey
+          );
           if (previous) {
             writeJson(response, 201, previous.response);
             return;
@@ -531,13 +696,21 @@ export function createApp(options = {}) {
         const now = new Date().toISOString();
         const orderId = crypto.randomUUID();
         const customer = {
-          name: String(body.customer?.name || sessionUser.user.name || addressSnapshot.recipientName || '').trim(),
+          name: String(
+            body.customer?.name || sessionUser.user.name || addressSnapshot.recipientName || ''
+          ).trim(),
           email: normalizeEmail(body.customer?.email || sessionUser.user.email),
-          phone: String(body.customer?.phone || sessionUser.user.phone || '').trim() || undefined
+          phone: String(body.customer?.phone || sessionUser.user.phone || '').trim() || undefined,
         };
 
         if (!customer.name || !customer.email) {
-          errorResponse(request, response, 422, 'INVALID_CUSTOMER', 'Dados do cliente incompletos.');
+          errorResponse(
+            request,
+            response,
+            422,
+            'INVALID_CUSTOMER',
+            'Dados do cliente incompletos.'
+          );
           return;
         }
 
@@ -558,7 +731,7 @@ export function createApp(options = {}) {
             unitWeightGrams: item.unitWeightGrams,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
-            lineTotal: item.lineTotal
+            lineTotal: item.lineTotal,
           })),
           subtotal: quote.subtotal,
           shipping: quote.shipping,
@@ -566,7 +739,7 @@ export function createApp(options = {}) {
           productionEstimateHours: quote.productionEstimateHours,
           notes: String(body.notes || '').trim() || undefined,
           createdAt: now,
-          updatedAt: now
+          updatedAt: now,
         };
 
         const responsePayload = {
@@ -578,8 +751,8 @@ export function createApp(options = {}) {
             shipping: order.shipping,
             total: order.total,
             productionEstimateHours: order.productionEstimateHours,
-            createdAt: order.createdAt
-          }
+            createdAt: order.createdAt,
+          },
         };
 
         await store.update((nextStore) => {
@@ -591,7 +764,7 @@ export function createApp(options = {}) {
               userId: sessionUser.user.id,
               orderId: order.id,
               response: responsePayload,
-              createdAt: now
+              createdAt: now,
             });
           }
           queueEmails(nextStore, order);
@@ -627,12 +800,191 @@ export function createApp(options = {}) {
       const sessionUser = await requireUser(request, response);
       if (!sessionUser) return;
       const orderId = decodeURIComponent(pathname.split('/').pop());
-      const order = sessionUser.store.orders.find((entry) => entry.id === orderId && entry.userId === sessionUser.user.id);
+      const order = sessionUser.store.orders.find(
+        (entry) => entry.id === orderId && entry.userId === sessionUser.user.id
+      );
       if (!order) {
         errorResponse(request, response, 404, 'ORDER_NOT_FOUND', 'Pedido não encontrado.');
         return;
       }
       writeJson(response, 200, { order });
+      return;
+    }
+
+    if (request.method === 'GET' && pathname === '/api/admin/orders') {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      const url = new URL(request.url, 'http://localhost');
+      const statusFilter = String(url.searchParams.get('status') || '').trim();
+      const orders = admin.store.orders
+        .filter((order) => !statusFilter || order.status === statusFilter)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      writeJson(response, 200, { orders });
+      return;
+    }
+
+    if (request.method === 'GET' && pathname.startsWith('/api/admin/orders/')) {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      const orderId = decodeURIComponent(pathname.split('/').pop());
+      const order = admin.store.orders.find((entry) => entry.id === orderId);
+      if (!order) {
+        errorResponse(request, response, 404, 'ORDER_NOT_FOUND', 'Pedido não encontrado.');
+        return;
+      }
+      writeJson(response, 200, { order });
+      return;
+    }
+
+    if (request.method === 'PATCH' && pathname.startsWith('/api/admin/orders/')) {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      const orderId = decodeURIComponent(pathname.split('/').pop());
+      const body = await parseBody(request);
+      if (!ORDER_STATUSES.includes(body.status)) {
+        errorResponse(
+          request,
+          response,
+          422,
+          'INVALID_STATUS',
+          `Status inválido. Use um de: ${ORDER_STATUSES.join(', ')}.`
+        );
+        return;
+      }
+      let updatedOrder = null;
+      await store.update((nextStore) => {
+        const target = nextStore.orders.find((entry) => entry.id === orderId);
+        if (!target) {
+          const error = new Error('Pedido não encontrado.');
+          error.code = 'ORDER_NOT_FOUND';
+          throw error;
+        }
+        updatedOrder = { ...target, status: body.status, updatedAt: new Date().toISOString() };
+        nextStore.orders = nextStore.orders.map((entry) =>
+          entry.id === orderId ? updatedOrder : entry
+        );
+        return nextStore;
+      });
+      writeJson(response, 200, { order: updatedOrder });
+      return;
+    }
+
+    if (request.method === 'GET' && pathname === '/api/admin/users') {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      const url = new URL(request.url, 'http://localhost');
+      const query = String(url.searchParams.get('query') || '')
+        .trim()
+        .toLowerCase();
+      const users = admin.store.users
+        .filter((user) => !query || `${user.name} ${user.email}`.toLowerCase().includes(query))
+        .map(sanitizeUser)
+        .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
+      writeJson(response, 200, { users });
+      return;
+    }
+
+    if (request.method === 'GET' && pathname.startsWith('/api/admin/users/')) {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      const userId = decodeURIComponent(pathname.split('/').pop());
+      const user = admin.store.users.find((entry) => entry.id === userId);
+      if (!user) {
+        errorResponse(request, response, 404, 'USER_NOT_FOUND', 'Usuário não encontrado.');
+        return;
+      }
+      const addresses = admin.store.addresses.filter((entry) => entry.userId === userId);
+      const orders = admin.store.orders
+        .filter((entry) => entry.userId === userId)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      writeJson(response, 200, { user: sanitizeUser(user), addresses, orders });
+      return;
+    }
+
+    if (request.method === 'PATCH' && pathname.startsWith('/api/admin/users/')) {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      const userId = decodeURIComponent(pathname.split('/').pop());
+      const body = await parseBody(request);
+      if (body.role !== undefined) {
+        if (!USER_ROLES.includes(body.role)) {
+          errorResponse(
+            request,
+            response,
+            422,
+            'INVALID_ROLE',
+            `Papel inválido. Use um de: ${USER_ROLES.join(', ')}.`
+          );
+          return;
+        }
+        if (userId === admin.user.id && body.role !== admin.user.role) {
+          errorResponse(
+            request,
+            response,
+            422,
+            'CANNOT_CHANGE_OWN_ROLE',
+            'Você não pode alterar seu próprio papel.'
+          );
+          return;
+        }
+      }
+      let updatedUser = null;
+      await store.update((nextStore) => {
+        const target = nextStore.users.find((entry) => entry.id === userId);
+        if (!target) {
+          const error = new Error('Usuário não encontrado.');
+          error.code = 'USER_NOT_FOUND';
+          throw error;
+        }
+        updatedUser = {
+          ...target,
+          name: body.name !== undefined ? String(body.name).trim() || target.name : target.name,
+          phone: body.phone !== undefined ? String(body.phone).trim() || undefined : target.phone,
+          role: body.role !== undefined ? normalizeUserRole(body.role) : target.role,
+          updatedAt: new Date().toISOString(),
+        };
+        nextStore.users = nextStore.users.map((entry) =>
+          entry.id === userId ? updatedUser : entry
+        );
+        return nextStore;
+      });
+      writeJson(response, 200, { user: sanitizeUser(updatedUser) });
+      return;
+    }
+
+    if (request.method === 'DELETE' && pathname.startsWith('/api/admin/users/')) {
+      const admin = await requireAdmin(request, response);
+      if (!admin) return;
+      const userId = decodeURIComponent(pathname.split('/').pop());
+      if (userId === admin.user.id) {
+        errorResponse(
+          request,
+          response,
+          422,
+          'CANNOT_DELETE_SELF',
+          'Você não pode excluir a própria conta por aqui.'
+        );
+        return;
+      }
+      await store.update((nextStore) => {
+        const target = nextStore.users.find((entry) => entry.id === userId);
+        if (!target) {
+          const error = new Error('Usuário não encontrado.');
+          error.code = 'USER_NOT_FOUND';
+          throw error;
+        }
+        nextStore.users = nextStore.users.filter((entry) => entry.id !== userId);
+        nextStore.sessions = nextStore.sessions.filter((entry) => entry.userId !== userId);
+        nextStore.addresses = nextStore.addresses.filter((entry) => entry.userId !== userId);
+        nextStore.idempotencyKeys = nextStore.idempotencyKeys.filter(
+          (entry) => entry.userId !== userId
+        );
+        nextStore.orders = nextStore.orders.map((entry) =>
+          entry.userId === userId ? { ...entry, userId: undefined } : entry
+        );
+        return nextStore;
+      });
+      writeNoContent(response);
       return;
     }
 
@@ -680,13 +1032,17 @@ export function createApp(options = {}) {
 
   const server = createServer(handleRequest);
 
-  server.inject = async function inject({ method = 'GET', path: requestPath = '/', headers = {}, body = null } = {}) {
+  server.inject = async function inject({
+    method = 'GET',
+    path: requestPath = '/',
+    headers = {},
+    body = null,
+  } = {}) {
     const normalizedHeaders = Object.fromEntries(
       Object.entries(headers).map(([key, value]) => [String(key).toLowerCase(), value])
     );
-    const chunks = body == null
-      ? []
-      : [Buffer.from(typeof body === 'string' ? body : JSON.stringify(body))];
+    const chunks =
+      body == null ? [] : [Buffer.from(typeof body === 'string' ? body : JSON.stringify(body))];
 
     const request = {
       method,
@@ -697,7 +1053,7 @@ export function createApp(options = {}) {
         for (const chunk of chunks) {
           yield chunk;
         }
-      }
+      },
     };
 
     let statusCode = 200;
@@ -714,22 +1070,30 @@ export function createApp(options = {}) {
       },
       end(chunk = '') {
         if (chunk) responseChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
-      }
+      },
     };
 
     await handleRequest(request, response);
 
     const text = Buffer.concat(responseChunks).toString('utf8');
     let json = null;
-    if ((responseHeaders['Content-Type'] || responseHeaders['content-type'] || '').includes('application/json') && text) {
+    if (
+      (responseHeaders['Content-Type'] || responseHeaders['content-type'] || '').includes(
+        'application/json'
+      ) &&
+      text
+    ) {
       json = JSON.parse(text);
     }
 
     return { statusCode, headers: responseHeaders, text, json };
   };
 
-  server.start = async function start(port = Number(process.env.PORT || 3001), host = process.env.HOST || '127.0.0.1') {
-    await store.init?.();
+  server.start = async function start(
+    port = Number(process.env.PORT || 3001),
+    host = process.env.HOST || '127.0.0.1'
+  ) {
+    await ensureStoreReady();
     const mailerWorker = setInterval(() => {
       processPendingEmails(store, { config: mailerConfig }).catch((error) => {
         console.error('[mailer] worker error', error);
@@ -740,6 +1104,8 @@ export function createApp(options = {}) {
       server.listen(port, host, () => resolve(server));
     });
   };
+
+  server.store = store;
 
   return server;
 }
@@ -754,7 +1120,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 }
 
 function resolveCorsOrigins(input) {
-  if (Array.isArray(input) && input.length) return new Set(input.map((origin) => String(origin).trim()).filter(Boolean));
+  if (Array.isArray(input) && input.length)
+    return new Set(input.map((origin) => String(origin).trim()).filter(Boolean));
   const envOrigins = String(process.env.CORS_ORIGINS || '')
     .split(',')
     .map((origin) => origin.trim())

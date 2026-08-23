@@ -20,7 +20,7 @@ export function resolveMailerConfig(env = process.env) {
     apiKey,
     from,
     orderRecipient,
-    configured: provider === 'resend' && Boolean(apiKey) && Boolean(from)
+    configured: provider === 'resend' && Boolean(apiKey) && Boolean(from),
   };
 }
 
@@ -29,7 +29,9 @@ function formatCurrency(value) {
 }
 
 function renderItemsRows(items = []) {
-  return items.map((item) => `
+  return items
+    .map(
+      (item) => `
     <tr>
       <td>${escapeHtml(item.productNameSnapshot)} - ${escapeHtml(item.optionName)}</td>
       <td style="text-align:right">${Number(item.quantity || 0)}</td>
@@ -37,7 +39,9 @@ function renderItemsRows(items = []) {
       <td style="text-align:right">${formatCurrency(item.unitPrice)}</td>
       <td style="text-align:right">${formatCurrency(item.lineTotal)}</td>
     </tr>
-  `).join('');
+  `
+    )
+    .join('');
 }
 
 function renderAddressBlock(address = {}) {
@@ -52,8 +56,10 @@ function renderAddressBlock(address = {}) {
     line2,
     `${escapeHtml(address.city)} - ${escapeHtml(address.state)}`,
     `CEP ${escapeHtml(address.postalCode)}`,
-    address.reference ? `Referencia: ${escapeHtml(address.reference)}` : ''
-  ].filter(Boolean).join('<br>');
+    address.reference ? `Referencia: ${escapeHtml(address.reference)}` : '',
+  ]
+    .filter(Boolean)
+    .join('<br>');
 }
 
 export function buildInternalOrderEmail(order) {
@@ -109,9 +115,9 @@ async function sendViaResend({ to, from, subject, html, text }, apiKey, fetchImp
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ from, to, subject, html, text })
+    body: JSON.stringify({ from, to, subject, html, text }),
   });
 
   if (!response.ok) {
@@ -121,7 +127,7 @@ async function sendViaResend({ to, from, subject, html, text }, apiKey, fetchImp
 }
 
 function resolveNow(options = {}) {
-  const value = typeof options.now === 'function' ? options.now() : (options.now || new Date());
+  const value = typeof options.now === 'function' ? options.now() : options.now || new Date();
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
@@ -138,11 +144,16 @@ async function claimNextPendingEmail(store, options = {}) {
   let claimedEmail = null;
 
   await store.update((nextStore) => {
-    const target = nextStore.emails.find((email) => !excludedIds.has(email.id) && !email.sentAt && hasExpiredLease(email, claimedAtMs, leaseMs));
+    const target = nextStore.emails.find(
+      (email) =>
+        !excludedIds.has(email.id) && !email.sentAt && hasExpiredLease(email, claimedAtMs, leaseMs)
+    );
     if (!target) return nextStore;
 
     claimedEmail = { ...target, processingStartedAt: claimedAt };
-    nextStore.emails = nextStore.emails.map((email) => (email.id === target.id ? claimedEmail : email));
+    nextStore.emails = nextStore.emails.map((email) =>
+      email.id === target.id ? claimedEmail : email
+    );
     return nextStore;
   });
 
@@ -179,7 +190,7 @@ export async function processPendingEmails(store, options = {}) {
     if (!order) {
       await releaseEmailClaim(store, email.id, (entry) => ({
         ...entry,
-        processingStartedAt: undefined
+        processingStartedAt: undefined,
       }));
       continue;
     }
@@ -193,7 +204,7 @@ export async function processPendingEmails(store, options = {}) {
         ...entry,
         sentAt: resolveNow(options),
         lastError: undefined,
-        processingStartedAt: undefined
+        processingStartedAt: undefined,
       }));
       sent += 1;
     } catch (error) {
@@ -201,7 +212,7 @@ export async function processPendingEmails(store, options = {}) {
         ...entry,
         attempts: Number(entry.attempts || 0) + 1,
         lastError: String(error?.message || error),
-        processingStartedAt: undefined
+        processingStartedAt: undefined,
       }));
     }
   }

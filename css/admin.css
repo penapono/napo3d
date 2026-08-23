@@ -1,0 +1,129 @@
+.admin-inner {
+  max-width: 1080px;
+}
+
+.admin-panel {
+  margin-top: 24px;
+}
+
+.admin-list {
+  gap: 10px;
+}
+
+.admin-list-row {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 14px 18px;
+}
+
+.admin-list-row-info {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-list-row-info span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.admin-list-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-search-box {
+  width: min(100%, 320px);
+}
+
+.button-danger {
+  background: transparent;
+  border: 1px solid var(--accent-dark);
+  color: var(--accent-dark);
+}
+
+.inline-badge.role-admin {
+  background: var(--accent);
+  color: #fff;
+}
+
+.admin-options-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin: 18px 0 10px;
+}
+
+.admin-option-row {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 14px;
+}
+
+.admin-dialog {
+  max-height: calc(100vh - 64px);
+  max-width: 640px;
+  overflow-y: auto;
+}
+
+.admin-dialog form,
+.admin-dialog .info-list,
+.admin-dialog > section {
+  margin-top: 16px;
+}
+
+.admin-dialog label {
+  color: var(--ink);
+  display: grid;
+  font-size: 13px;
+  gap: 6px;
+}
+
+.admin-dialog input,
+.admin-dialog select {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 2px rgba(28, 36, 32, 0.03);
+  color: var(--ink);
+  font: inherit;
+  padding: 13px 16px;
+}
+
+.admin-dialog input:focus,
+.admin-dialog select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 90, 54, 0.12);
+  outline: 0;
+}
+
+.admin-dialog .section-heading h2 {
+  font-size: 20px;
+}
+
+.admin-dialog .inline-actions {
+  margin-top: 12px;
+}
+
+@media (max-width: 640px) {
+  .admin-options-heading,
+  .admin-list-row,
+  .admin-list-row-actions {
+    display: grid;
+  }
+
+  .admin-search-box {
+    width: 100%;
+  }
+}

@@ -17,7 +17,9 @@ function persistToken(token) {
 }
 
 function normalizeBaseUrl(value) {
-  return String(value || '').trim().replace(/\/+$/, '');
+  return String(value || '')
+    .trim()
+    .replace(/\/+$/, '');
 }
 
 function createApiError(status, payload, fallbackMessage) {
@@ -40,8 +42,8 @@ async function request(pathname, options = {}) {
       Accept: 'application/json',
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...(options.headers || {})
-    }
+      ...(options.headers || {}),
+    },
   });
   const text = await response.text();
   const payload = text ? JSON.parse(text) : null;
@@ -58,22 +60,33 @@ async function loadCatalog() {
 function liveImplementation() {
   return {
     getProducts: (params) => request(`/api/products${queryString(params)}`),
-    register: (payload) => request('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
-    login: (payload) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) }),
+    register: (payload) =>
+      request('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
+    login: (payload) =>
+      request('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) }),
     logout: () => request('/api/auth/logout', { method: 'POST' }),
     getMe: () => request('/api/me'),
     listAddresses: () => request('/api/me/addresses'),
-    createAddress: (payload) => request('/api/me/addresses', { method: 'POST', body: JSON.stringify(payload) }),
-    updateAddress: (addressId, payload) => request(`/api/me/addresses/${encodeURIComponent(addressId)}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-    deleteAddress: (addressId) => request(`/api/me/addresses/${encodeURIComponent(addressId)}`, { method: 'DELETE' }),
-    setDefaultAddress: (addressId) => request(`/api/me/addresses/${encodeURIComponent(addressId)}/default`, { method: 'POST' }),
-    quoteOrder: (payload) => request('/api/orders/quote', { method: 'POST', body: JSON.stringify(payload) }),
-    createOrder: (payload) => request('/api/orders', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      headers: payload.idempotencyKey ? { 'Idempotency-Key': payload.idempotencyKey } : {}
-    }),
-    listOrders: () => request('/api/me/orders')
+    createAddress: (payload) =>
+      request('/api/me/addresses', { method: 'POST', body: JSON.stringify(payload) }),
+    updateAddress: (addressId, payload) =>
+      request(`/api/me/addresses/${encodeURIComponent(addressId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    deleteAddress: (addressId) =>
+      request(`/api/me/addresses/${encodeURIComponent(addressId)}`, { method: 'DELETE' }),
+    setDefaultAddress: (addressId) =>
+      request(`/api/me/addresses/${encodeURIComponent(addressId)}/default`, { method: 'POST' }),
+    quoteOrder: (payload) =>
+      request('/api/orders/quote', { method: 'POST', body: JSON.stringify(payload) }),
+    createOrder: (payload) =>
+      request('/api/orders', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        headers: payload.idempotencyKey ? { 'Idempotency-Key': payload.idempotencyKey } : {},
+      }),
+    listOrders: () => request('/api/me/orders'),
   };
 }
 
@@ -81,7 +94,7 @@ function buildImplementation(selectedMode) {
   if (selectedMode === 'live') return liveImplementation();
   return createMockBackend({
     getToken: () => accessToken,
-    loadCatalog
+    loadCatalog,
   });
 }
 
@@ -96,7 +109,7 @@ function configuredApiBaseCandidates() {
     stored,
     sameOrigin,
     'http://localhost:3001',
-    'http://127.0.0.1:3001'
+    'http://127.0.0.1:3001',
   ]
     .map(normalizeBaseUrl)
     .filter(Boolean);
@@ -107,7 +120,10 @@ async function probeLiveApi(baseUrl) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 1500);
   try {
-    const response = await fetch(`${baseUrl}/api/health`, { headers: { Accept: 'application/json' }, signal: controller.signal });
+    const response = await fetch(`${baseUrl}/api/health`, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
     if (!response.ok) return false;
     const payload = await response.json();
     return payload?.status === 'ok';
@@ -130,7 +146,7 @@ async function ensureInit() {
         }
       }
       apiBaseUrl = liveCandidate;
-      mode = liveCandidate ? 'live' : (preferred || 'mock');
+      mode = liveCandidate ? 'live' : preferred || 'mock';
       implementation = buildImplementation(mode);
       if (liveCandidate) localStorage.setItem(API_BASE_KEY, liveCandidate);
       localStorage.setItem(MODE_KEY, mode);
@@ -214,5 +230,33 @@ export const apiClient = {
   },
   async listOrders() {
     return invoke('listOrders');
-  }
+  },
+};
+
+export const adminClient = {
+  listProducts: () => request('/api/admin/products'),
+  createProduct: (payload) =>
+    request('/api/admin/products', { method: 'POST', body: JSON.stringify(payload) }),
+  updateProduct: (id, payload) =>
+    request(`/api/admin/products/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteProduct: (id) =>
+    request(`/api/admin/products/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  listOrders: (params) => request(`/api/admin/orders${queryString(params)}`),
+  getOrder: (id) => request(`/api/admin/orders/${encodeURIComponent(id)}`),
+  updateOrderStatus: (id, statusValue) =>
+    request(`/api/admin/orders/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: statusValue }),
+    }),
+  listUsers: (params) => request(`/api/admin/users${queryString(params)}`),
+  getUser: (id) => request(`/api/admin/users/${encodeURIComponent(id)}`),
+  updateUser: (id, payload) =>
+    request(`/api/admin/users/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteUser: (id) => request(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };
