@@ -34,6 +34,7 @@ const state = {
   sort: 'recommended',
   page: 1,
   perPage: 6,
+  totalPages: 1,
   cart: loadCart(),
   me: null,
   addresses: [],
@@ -121,21 +122,6 @@ function image(url, alt, fallbackUrl = '') {
   return `<img src="${text(url)}" alt="${text(alt)}" loading="lazy" onerror="${fallback}"><div class="image-fallback" hidden>Imagem indisponível</div>`;
 }
 
-function visibleEntries() {
-  const query = state.query.trim().toLowerCase();
-  return sortProducts(
-    state.items.filter((item) => {
-      if (state.category !== 'all' && item.category !== state.category) return false;
-      const option = primaryProductOption(item);
-      if (!query) return true;
-      const haystack =
-        `${item.name} ${item.category} ${item.summary || ''} ${item.description || ''} ${(item.keywords || []).join(' ')} ${option?.name || ''} ${option?.colors || ''}`.toLowerCase();
-      return haystack.includes(query);
-    }),
-    state.sort
-  );
-}
-
 function findProduct(productId) {
   return state.items.find((item) => item.id === productId) || null;
 }
@@ -201,20 +187,42 @@ function card(item) {
   return `<article class="product-card"><div class="product-image">${image(imageSource.primary, item.name, imageSource.fallback)}<span class="product-tag">${text(item.category)}</span></div><div class="product-info"><h3>${text(item.name)}</h3>${ratingMarkup(option)}<p class="variant-name">${text(description)}</p><div class="tier-prices" aria-label="Preços por quantidade">${tierPrices}</div><button class="quote-button add-to-cart icon-action" type="button" data-product-id="${text(item.id)}" aria-label="Adicionar ${text(item.name)} ao carrinho" title="Adicionar ao carrinho"><i class="fa-solid fa-cart-plus" aria-hidden="true"></i><span class="sr-only">Adicionar ao carrinho</span></button></div></article>`;
 }
 
-function renderPagination(total) {
+async function refreshCatalog() {
+  const requestedPage = state.page;
+  const result = await apiClient.getProducts({
+    limit: state.perPage,
+    page: requestedPage,
+    sort: state.sort,
+    category: state.category,
+    query: state.query.trim(),
+  });
+  const totalPages = Math.max(1, Number(result.pagination?.totalPages) || 1);
+  if (requestedPage > totalPages) {
+    state.page = totalPages;
+    return refreshCatalog();
+  }
+  state.items = Array.isArray(result.items) ? result.items : [];
+  state.categories = Array.isArray(result.categories) ? result.categories : [];
+  state.catalogTotal = Number(result.pagination?.total) || state.items.length;
+  state.totalPages = totalPages;
+  state.page = requestedPage;
+}
+
+function renderPagination() {
   const pagination = $('#pagination');
   if (!pagination) return;
-  const totalPages = Math.max(1, Math.ceil(total / state.perPage));
-  if (total <= state.perPage) {
+  if (state.catalogTotal <= state.perPage) {
     pagination.innerHTML = '';
     return;
   }
-  pagination.innerHTML = `<button class="page-button page-button-icon" type="button" data-page="prev" aria-label="Página anterior" ${state.page === 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>${Array.from({ length: totalPages }, (_, index) => `<button class="page-button${state.page === index + 1 ? ' active' : ''}" type="button" data-page="${index + 1}">${index + 1}</button>`).join('')}<button class="page-button page-button-icon" type="button" data-page="next" aria-label="Próxima página" ${state.page === totalPages ? 'disabled' : ''}><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`;
+  pagination.innerHTML = `<button class="page-button page-button-icon" type="button" data-page="prev" aria-label="Página anterior" ${state.page === 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>${Array.from({ length: state.totalPages }, (_, index) => `<button class="page-button${state.page === index + 1 ? ' active' : ''}" type="button" data-page="${index + 1}">${index + 1}</button>`).join('')}<button class="page-button page-button-icon" type="button" data-page="next" aria-label="Próxima página" ${state.page === state.totalPages ? 'disabled' : ''}><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`;
   pagination.querySelectorAll('.page-button').forEach((button) =>
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const target = button.dataset.page;
       state.page =
         target === 'prev' ? state.page - 1 : target === 'next' ? state.page + 1 : Number(target);
+      await refreshCatalog();
+      renderCategories();
       renderCatalog();
       $('#catalogo')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     })
@@ -224,16 +232,9 @@ function renderPagination(total) {
 function renderCatalog() {
   const grid = $('#catalog-grid');
   if (!grid) return;
-  const entries = visibleEntries();
-  const totalPages = Math.max(1, Math.ceil(entries.length / state.perPage));
-  state.page = Math.min(state.page, totalPages);
-  const start = (state.page - 1) * state.perPage;
-  grid.innerHTML = entries
-    .slice(start, start + state.perPage)
-    .map(card)
-    .join('');
-  $('#empty-state').hidden = entries.length > 0;
-  renderPagination(entries.length);
+  grid.innerHTML = state.items.map(card).join('');
+  $('#empty-state').hidden = state.items.length > 0;
+  renderPagination();
   grid
     .querySelectorAll('.add-to-cart')
     .forEach((button) =>
@@ -364,10 +365,7 @@ async function refreshSession() {
 }
 
 async function loadProducts() {
-  const result = await apiClient.getProducts({ limit: 200, sort: state.sort });
-  state.items = Array.isArray(result.items) ? result.items : [];
-  state.categories = Array.isArray(result.categories) ? result.categories : [];
-  state.catalogTotal = Number(result.pagination?.total) || state.items.length;
+  await refreshCatalog();
 }
 
 async function loadUserData() {
@@ -407,15 +405,6 @@ function renderCategories() {
           `<button class="pill${state.category === category.name ? ' active' : ''}" data-category="${text(category.name)}">${text(category.name)} (${text(category.count)})</button>`
       )
       .join('');
-  node.querySelectorAll('.pill').forEach((button) =>
-    button.addEventListener('click', () => {
-      node.querySelectorAll('.pill').forEach((pill) => pill.classList.remove('active'));
-      button.classList.add('active');
-      state.category = button.dataset.category;
-      state.page = 1;
-      renderCatalog();
-    })
-  );
 }
 
 function renderOrders() {
@@ -661,12 +650,44 @@ function bindEvents() {
   $('#search')?.addEventListener('input', (event) => {
     state.query = event.target.value;
     state.page = 1;
-    renderCatalog();
+    refreshCatalog()
+      .then(() => {
+        renderCategories();
+        renderCatalog();
+      })
+      .catch(console.error);
+  });
+  $('#per-page')?.addEventListener('change', (event) => {
+    state.perPage = Math.max(1, Number(event.target.value) || 6);
+    state.page = 1;
+    refreshCatalog()
+      .then(() => {
+        renderCategories();
+        renderCatalog();
+      })
+      .catch(console.error);
   });
   $('#sort')?.addEventListener('change', (event) => {
     state.sort = event.target.value;
     state.page = 1;
-    renderCatalog();
+    refreshCatalog()
+      .then(() => {
+        renderCategories();
+        renderCatalog();
+      })
+      .catch(console.error);
+  });
+  $('#category-filters')?.addEventListener('click', (event) => {
+    const button = event.target.closest('.pill');
+    if (!button) return;
+    state.category = button.dataset.category;
+    state.page = 1;
+    refreshCatalog()
+      .then(() => {
+        renderCategories();
+        renderCatalog();
+      })
+      .catch(console.error);
   });
   $('#cart-open')?.addEventListener('click', () => redirect('cart'));
   $('#account-open')?.addEventListener('click', () => redirect('account'));
@@ -842,6 +863,7 @@ async function init() {
   await apiClient.init();
   state.backendMode = apiClient.getMode();
   await Promise.all([loadProducts(), refreshSession()]);
+  if ($('#per-page')) $('#per-page').value = String(state.perPage);
   if (state.me) await loadUserData();
   renderCategories();
   renderCatalog();
