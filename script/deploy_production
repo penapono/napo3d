@@ -23,7 +23,7 @@ fi
 compose=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 
 echo 'Building application images...'
-"${compose[@]}" build --pull front api
+"${compose[@]}" build --pull front api makerworld-scraper
 
 echo 'Publishing containers...'
 "${compose[@]}" up -d --remove-orphans
