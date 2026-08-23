@@ -212,6 +212,7 @@ export function validateProductInput(product = {}) {
       description: normalizeOptionalText(product.description) || '',
       keywords: normalizeOptionalTextList(product.keywords),
       aiData: normalizeOptionalObject(product.aiData),
+      manualCuration: normalizeOptionalObject(product.manualCuration),
       page: Number.isFinite(Number(product.page)) ? Number(product.page) : undefined,
       productionTime: Number.isFinite(Number(product.productionTime))
         ? Number(product.productionTime)

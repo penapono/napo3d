@@ -490,6 +490,56 @@ test('admin can create, update, and delete a product; storefront sees the change
   assert.equal(afterDelete.response.status, 404);
 });
 
+test('admin product manual curation metadata persists and is returned in admin responses', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+  const admin = await loginAsNewAdmin(app, 'admin-manual-curation@example.com');
+
+  const create = await api(app, '/api/admin/products', {
+    method: 'POST',
+    headers: admin,
+    body: JSON.stringify({
+      name: 'Organizador Curado',
+      category: 'Escritório',
+      summary: 'Resumo inicial.',
+      description: 'Descrição inicial.',
+      manualCuration: {
+        curatedAt: '2026-08-23T12:00:00.000Z',
+        source: 'manual-review',
+        notes: 'Ajustado manualmente para alinhar a comunicação comercial.',
+      },
+      options: [{ name: 'Única', weight: 120, imageUrl: 'https://example.com/organizador.webp' }],
+    }),
+  });
+  assert.equal(create.response.status, 201);
+  assert.equal(create.json.product.manualCuration.curatedAt, '2026-08-23T12:00:00.000Z');
+  assert.equal(create.json.product.manualCuration.source, 'manual-review');
+
+  const update = await api(app, `/api/admin/products/${create.json.product.id}`, {
+    method: 'PATCH',
+    headers: admin,
+    body: JSON.stringify({
+      summary: 'Resumo revisado manualmente.',
+      manualCuration: {
+        curatedAt: '2026-08-23T15:30:00.000Z',
+        source: 'manual-review',
+        notes: 'Texto ajustado novamente depois da revisão do catálogo.',
+      },
+    }),
+  });
+  assert.equal(update.response.status, 200);
+  assert.equal(update.json.product.manualCuration.curatedAt, '2026-08-23T15:30:00.000Z');
+  assert.match(update.json.product.manualCuration.notes, /revisão do catálogo/i);
+
+  const detail = await api(app, `/api/admin/products/${create.json.product.id}`, {
+    headers: admin,
+  });
+  assert.equal(detail.response.status, 200);
+  assert.equal(detail.json.product.summary, 'Resumo revisado manualmente.');
+  assert.equal(detail.json.product.manualCuration.curatedAt, '2026-08-23T15:30:00.000Z');
+  assert.equal(detail.json.product.manualCuration.source, 'manual-review');
+});
+
 test('public products response includes category counts and reflects new products', async (t) => {
   const app = await startTestServer();
   t.after(() => app.close());

@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS products (
   description text,
   keywords jsonb NOT NULL DEFAULT '[]',
   ai_data jsonb NOT NULL DEFAULT '{}',
+  manual_curation jsonb NOT NULL DEFAULT '{}',
   page integer,
   production_time integer,
   options jsonb NOT NULL DEFAULT '[]',
@@ -126,6 +127,7 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS production_time integer;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS description text;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS keywords jsonb NOT NULL DEFAULT '[]';
 ALTER TABLE products ADD COLUMN IF NOT EXISTS ai_data jsonb NOT NULL DEFAULT '{}';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS manual_curation jsonb NOT NULL DEFAULT '{}';
 `;
 
 export function createMemoryStore(initialState = EMPTY_STORE) {
@@ -295,8 +297,8 @@ export function createPostgresStore(options = {}) {
         await client.query(
           `INSERT INTO products (
              id, name, category, reference, summary, description, keywords, ai_data,
-             page, production_time, options, created_at, updated_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11::jsonb, $12, $13)`,
+             manual_curation, page, production_time, options, created_at, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12::jsonb, $13, $14)`,
           [
             product.id,
             product.name,
@@ -306,6 +308,7 @@ export function createPostgresStore(options = {}) {
             nullIfEmpty(product.description),
             JSON.stringify(product.keywords || []),
             JSON.stringify(product.aiData || {}),
+            JSON.stringify(product.manualCuration || {}),
             product.page ?? null,
             product.productionTime ?? null,
             JSON.stringify(product.options || []),
@@ -335,10 +338,11 @@ export function createPostgresStore(options = {}) {
                  description = $6,
                  keywords = $7::jsonb,
                  ai_data = $8::jsonb,
-                 page = $9,
-                 production_time = $10,
-                 options = $11::jsonb,
-                 updated_at = $12
+                 manual_curation = $9::jsonb,
+                 page = $10,
+                 production_time = $11,
+                 options = $12::jsonb,
+                 updated_at = $13
            WHERE id = $1`,
           [
             id,
@@ -349,6 +353,7 @@ export function createPostgresStore(options = {}) {
             nullIfEmpty(next.description),
             JSON.stringify(next.keywords || []),
             JSON.stringify(next.aiData || {}),
+            JSON.stringify(next.manualCuration || {}),
             next.page ?? null,
             next.productionTime ?? null,
             JSON.stringify(next.options || []),
@@ -658,6 +663,8 @@ function mapProductRow(row) {
     description: undefinedIfNull(row.description),
     keywords: Array.isArray(row.keywords) ? row.keywords : [],
     aiData: row.ai_data && typeof row.ai_data === 'object' ? row.ai_data : {},
+    manualCuration:
+      row.manual_curation && typeof row.manual_curation === 'object' ? row.manual_curation : {},
     page: row.page == null ? undefined : Number(row.page),
     productionTime: row.production_time == null ? undefined : Number(row.production_time),
     options: row.options || [],
@@ -672,8 +679,8 @@ async function replaceProductsTable(client, products) {
     await client.query(
       `INSERT INTO products (
          id, name, category, reference, summary, description, keywords, ai_data,
-         page, production_time, options, created_at, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11::jsonb, $12, $13)`,
+         manual_curation, page, production_time, options, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12::jsonb, $13, $14)`,
       [
         product.id,
         product.name,
@@ -683,6 +690,7 @@ async function replaceProductsTable(client, products) {
         nullIfEmpty(product.description),
         JSON.stringify(product.keywords || []),
         JSON.stringify(product.aiData || {}),
+        JSON.stringify(product.manualCuration || {}),
         product.page ?? null,
         product.productionTime ?? null,
         JSON.stringify(product.options || []),

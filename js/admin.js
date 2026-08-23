@@ -119,6 +119,16 @@ function aiEnrichmentTone(product) {
   return '';
 }
 
+function manualCurationSummary(product) {
+  const curation = product.manualCuration || {};
+  if (!curation.curatedAt) return '';
+  return `Curadoria manual aplicada em ${formatDate(curation.curatedAt)}.`;
+}
+
+function manualCurationTone(product) {
+  return product.manualCuration?.curatedAt ? 'success' : '';
+}
+
 function scheduleProductRefreshPoll() {
   clearTimeout(productRefreshPollTimer);
   if (
@@ -184,6 +194,8 @@ function productRow(product) {
   const enrichment = product.aiEnrichment;
   const enrichmentSummary = aiEnrichmentSummary(product);
   const enrichmentTone = aiEnrichmentTone(product);
+  const manualSummary = manualCurationSummary(product);
+  const manualTone = manualCurationTone(product);
   const rating =
     Number.isFinite(Number(option?.rating)) && Number(option.rating) > 0
       ? `${Number(option.rating).toFixed(1).replace('.', ',')}★`
@@ -198,6 +210,7 @@ function productRow(product) {
       <strong>${text(product.name)}</strong>
       <span>${text(product.category || 'Sem categoria')} · ${Number(option?.weight || 0)} g${rating ? ` · ${text(`${rating}${ratingCount}`)}` : ''}${text(makerWorldId)}</span>
       ${refreshSummary ? `<span class="admin-refresh-note" data-tone="${text(refreshTone)}">${text(refreshSummary)}</span>` : ''}
+      ${manualSummary ? `<span class="admin-refresh-note" data-tone="${text(manualTone)}">${text(manualSummary)}</span>` : ''}
       ${enrichmentSummary ? `<span class="admin-refresh-note" data-tone="${text(enrichmentTone)}">${text(enrichmentSummary)}</span>` : ''}
     </div>
     <div class="admin-list-row-actions">
