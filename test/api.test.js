@@ -10,6 +10,7 @@ async function startTestServer(options = {}) {
   const app = createApp({
     rootDir: path.resolve(path.join(path.dirname(fileURLToPath(import.meta.url)), '..')),
     store: createMemoryStore(),
+    makerWorldScrapeIntervalMs: 0,
     ...options,
   });
   app.promoteToAdmin = async (email) => {
@@ -536,6 +537,7 @@ test('admin can trigger a MakerWorld refresh and persist scraped option fields',
       return {
         url,
         model_id: '2838224',
+        name: 'Porta-cartões Airbus A320',
         description: 'Modelo sincronizado do MakerWorld.',
         image_urls: [
           'https://makerworld.bblmw.com/makerworld/user/demo/avatar.webp',
@@ -579,16 +581,18 @@ test('admin can trigger a MakerWorld refresh and persist scraped option fields',
     headers: admin,
   });
   assert.equal(refresh.response.status, 202);
-  assert.equal(refresh.json.job.status, 'running');
+  assert.equal(refresh.json.job.status, 'queued');
 
   let detail = null;
   for (let attempt = 0; attempt < 20; attempt += 1) {
     detail = await api(app, `/api/admin/products/${productId}`, { headers: admin });
-    if (detail.json.product.makerworldRefresh?.status !== 'running') break;
+    if (!['queued', 'running'].includes(detail.json.product.makerworldRefresh?.status)) break;
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
   assert.equal(detail.json.product.makerworldRefresh.status, 'succeeded');
+  assert.equal(detail.json.product.name, 'Porta-cartões Airbus A320');
+  assert.equal(detail.json.product.options[0].name, 'Porta-cartões Airbus A320');
   assert.equal(
     detail.json.product.options[0].url,
     'https://makerworld.com/pt/models/2838224-airplane-business-card-holder-a320-airbus'
@@ -603,6 +607,8 @@ test('admin can trigger a MakerWorld refresh and persist scraped option fields',
     'https://makerworld.bblmw.com/makerworld/model/demo/design/example-3.webp',
   ]);
   assert.equal(detail.json.product.options[0].time, '2h');
+  assert.equal(detail.json.product.options[0].rating, 4.9);
+  assert.equal(detail.json.product.options[0].ratingCount, 37);
   assert.equal(detail.json.product.options[0].weight, 84);
   assert.equal(detail.json.product.options[0].thumb, detail.json.product.options[0].imageUrl);
   assert.equal(detail.json.product.options[0].makerworldModelId, '2838224');
@@ -610,6 +616,143 @@ test('admin can trigger a MakerWorld refresh and persist scraped option fields',
   assert.equal(detail.json.product.summary, '');
   assert.equal(detail.json.product.options[0].productionTime, 120);
   assert.equal(detail.json.product.productionTime, 120);
+});
+
+test('admin can create a product from only a MakerWorld URL', async (t) => {
+  const app = await startTestServer({
+    async scrapeMakerWorldModel(url) {
+      return {
+        url,
+        model_id: '1820511',
+        name: 'Organizador Poly-Desk',
+        image_urls: [
+          'https://makerworld.bblmw.com/makerworld/user/demo/avatar.webp',
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-1.webp',
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-2.webp',
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-3.webp',
+        ],
+        best_profile: {
+          rating: 4.9,
+          rating_count: 93,
+          print_time: '16h 58m',
+          print_time_seconds: 61087,
+          weight_grams: 752,
+        },
+      };
+    },
+  });
+  t.after(() => app.close());
+  const admin = await loginAsNewAdmin(app, 'admin-makerworld-import@example.com');
+
+  const create = await api(app, '/api/admin/products', {
+    method: 'POST',
+    headers: admin,
+    body: JSON.stringify({
+      options: [{ url: 'https://makerworld.com/en/models/1820511-poly-desk-organizer' }],
+    }),
+  });
+
+  assert.equal(create.response.status, 201);
+  assert.equal(create.json.product.name, 'Organizador Poly-Desk');
+  assert.equal(create.json.product.options[0].name, 'Organizador Poly-Desk');
+  assert.equal(
+    create.json.product.options[0].url,
+    'https://makerworld.com/pt/models/1820511-poly-desk-organizer'
+  );
+  assert.equal(create.json.product.options[0].makerworldModelId, '1820511');
+  assert.equal(create.json.product.options[0].rating, 4.9);
+  assert.equal(create.json.product.options[0].ratingCount, 93);
+  assert.equal(create.json.product.options[0].weight, 752);
+  assert.equal(create.json.product.options[0].productionTime, 1018);
+  assert.equal(create.json.product.productionTime, 1018);
+  assert.deepEqual(create.json.product.options[0].imageGallery, [
+    'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-1.webp',
+    'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-2.webp',
+    'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-3.webp',
+  ]);
+});
+
+test('MakerWorld refreshes are queued with a minimum interval between scrapes', async (t) => {
+  const scrapeStarts = [];
+  const app = await startTestServer({
+    makerWorldScrapeIntervalMs: 25,
+    async scrapeMakerWorldModel(url) {
+      scrapeStarts.push(Date.now());
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return {
+        url,
+        model_id: url.includes('organizer') ? '1820511' : '2838224',
+        name: url.includes('organizer') ? 'Organizador Poly-Desk' : 'Porta-cartões Airbus A320',
+        image_urls: [
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/example-1.webp',
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/example-2.webp',
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/example-3.webp',
+        ],
+        best_profile: {
+          rating: 4.9,
+          rating_count: 10,
+          print_time: '2h',
+          print_time_seconds: 7200,
+          weight_grams: 84,
+        },
+      };
+    },
+  });
+  t.after(() => app.close());
+  const admin = await loginAsNewAdmin(app, 'admin-makerworld-queue@example.com');
+
+  const first = await api(app, '/api/admin/products', {
+    method: 'POST',
+    headers: admin,
+    body: JSON.stringify({
+      options: [{ url: 'https://makerworld.com/en/models/1820511-poly-desk-organizer' }],
+    }),
+  });
+  const second = await api(app, '/api/admin/products', {
+    method: 'POST',
+    headers: admin,
+    body: JSON.stringify({
+      options: [
+        {
+          url: 'https://makerworld.com/en/models/2838224-airplane-business-card-holder-a320-airbus',
+        },
+      ],
+    }),
+  });
+
+  const refreshFirst = await api(
+    app,
+    `/api/admin/products/${first.json.product.id}/refresh-makerworld`,
+    { method: 'POST', headers: admin }
+  );
+  const refreshSecond = await api(
+    app,
+    `/api/admin/products/${second.json.product.id}/refresh-makerworld`,
+    { method: 'POST', headers: admin }
+  );
+  assert.equal(refreshFirst.response.status, 202);
+  assert.equal(refreshSecond.response.status, 202);
+  assert.equal(refreshSecond.json.job.status, 'queued');
+
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const [firstDetail, secondDetail] = await Promise.all([
+      api(app, `/api/admin/products/${first.json.product.id}`, { headers: admin }),
+      api(app, `/api/admin/products/${second.json.product.id}`, { headers: admin }),
+    ]);
+    if (
+      firstDetail.json.product.makerworldRefresh?.status === 'succeeded' &&
+      secondDetail.json.product.makerworldRefresh?.status === 'succeeded'
+    ) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.equal(scrapeStarts.length, 4);
+  assert.ok(
+    scrapeStarts[3] - scrapeStarts[2] >= 20,
+    `expected queued scrapes to be spaced, got ${scrapeStarts[3] - scrapeStarts[2]}ms`
+  );
 });
 
 test('admin MakerWorld refresh rejects products without a MakerWorld URL', async (t) => {

@@ -14,6 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
+    <link rel="stylesheet" href="./assets/vendor/fontawesome/css/all.min.css" />
     <link rel="stylesheet" href="./css/styles.css" />
   </head>
 
@@ -47,8 +48,9 @@
               Escolha seu favorito e peça uma cotação.
             </p>
             <a class="button button-primary" href="#catalogo"
-              >Ver peças disponíveis <span aria-hidden="true">↓</span></a
-            >
+              >Ver peças disponíveis
+              <i class="fa-solid fa-arrow-down icon-inline" aria-hidden="true"></i
+            ></a>
           </div>
           <div class="hero-art" aria-label="Timelapse de uma peça sendo impressa em 3D">
             <img
@@ -89,10 +91,7 @@
                   type="button"
                   aria-label="Abrir busca"
                 >
-                  <svg aria-hidden="true" viewBox="0 0 24 24">
-                    <circle cx="11" cy="11" r="6"></circle>
-                    <path d="M20 20l-4.35-4.35"></path>
-                  </svg>
+                  <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                 </button>
                 <input
                   id="search"
@@ -119,7 +118,7 @@
                 <h2>Meu carrinho <span id="cart-count">0</span></h2>
               </div>
               <button class="cart-close" id="cart-close" type="button" aria-label="Fechar carrinho">
-                ×
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
               </button>
             </div>
             <div id="cart-items"><p class="cart-empty">Seu carrinho está vazio.</p></div>
@@ -138,7 +137,7 @@
 
           <dialog class="quantity-dialog" id="quantity-dialog">
             <button class="dialog-close" id="quantity-close" type="button" aria-label="Fechar">
-              ×
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i>
             </button>
             <span class="eyebrow">Adicionar ao carrinho</span>
             <h2 id="quantity-title">Escolha a quantidade</h2>
@@ -157,11 +156,11 @@
               >Quantidade
               <div class="quantity-control">
                 <button type="button" data-quantity-delta="-1" aria-label="Diminuir uma unidade">
-                  −
+                  <i class="fa-solid fa-minus" aria-hidden="true"></i>
                 </button>
                 <input id="quantity-input" type="number" min="1" step="1" value="1" />
                 <button type="button" data-quantity-delta="1" aria-label="Aumentar uma unidade">
-                  +
+                  <i class="fa-solid fa-plus" aria-hidden="true"></i>
                 </button>
               </div>
             </label>
@@ -218,13 +217,15 @@
         href="#top"
         aria-label="Voltar ao topo"
         title="Voltar ao topo"
-        >↑</a
-      >
+        ><i class="fa-solid fa-arrow-up" aria-hidden="true"></i
+      ></a>
     </main>
 
     <section class="store-page" id="cart-page" hidden>
       <div class="container store-page-inner">
-        <a class="back-link" href="./index.html">← Continuar comprando</a>
+        <a class="back-link" href="./index.html"
+          ><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Continuar comprando</a
+        >
         <span class="eyebrow">Seu pedido</span>
         <h1>Seu carrinho</h1>
         <div class="page-cart-items" id="page-cart-items"></div>

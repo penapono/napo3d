@@ -33,6 +33,9 @@ const DEFAULT_CORS_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
 
 export function createApp(options = {}) {
   const rootDir = options.rootDir || projectRoot;
+  const makerWorldScrapeIntervalMs = normalizeIntervalMs(
+    options.makerWorldScrapeIntervalMs ?? process.env.MAKERWORLD_SCRAPE_INTERVAL_MS ?? 60_000
+  );
   const store =
     options.store ||
     createPostgresStore({
@@ -50,6 +53,8 @@ export function createApp(options = {}) {
   const rateLimits = new Map();
   const makerWorldRefreshJobs = new Map();
   const makerWorldActiveRefreshes = new Map();
+  let makerWorldScrapeQueue = Promise.resolve();
+  let makerWorldLastFinishedAt = 0;
 
   const catalogState = {
     loadedAt: 0,
@@ -115,6 +120,26 @@ export function createApp(options = {}) {
     };
   }
 
+  function queueMakerWorldScrape(url, options = {}) {
+    const previous = makerWorldScrapeQueue.catch(() => {});
+    const task = previous.then(async () => {
+      const waitMs = makerWorldLastFinishedAt
+        ? Math.max(0, makerWorldLastFinishedAt + makerWorldScrapeIntervalMs - Date.now())
+        : 0;
+      if (waitMs > 0) {
+        await sleep(waitMs);
+      }
+      options.onStart?.();
+      try {
+        return await scrapeMakerWorld(url);
+      } finally {
+        makerWorldLastFinishedAt = Date.now();
+      }
+    });
+    makerWorldScrapeQueue = task.catch(() => {});
+    return task;
+  }
+
   function setMakerWorldJob(productId, patch) {
     const current = makerWorldRefreshJobs.get(productId) || { productId };
     const next = { ...current, ...patch, productId };
@@ -141,8 +166,9 @@ export function createApp(options = {}) {
 
     const startedAt = new Date().toISOString();
     setMakerWorldJob(productId, {
-      status: 'running',
-      startedAt,
+      status: 'queued',
+      startedAt: null,
+      queuedAt: startedAt,
       updatedAt: startedAt,
       finishedAt: null,
       successCount: 0,
@@ -175,8 +201,18 @@ export function createApp(options = {}) {
         const refreshes = [];
         for (const target of targets) {
           try {
-            const payload = await scrapeMakerWorld(
-              normalizeMakerWorldUrl(target.url) || target.url
+            const payload = await queueMakerWorldScrape(
+              normalizeMakerWorldUrl(target.url) || target.url,
+              {
+                onStart: () => {
+                  const now = new Date().toISOString();
+                  setMakerWorldJob(productId, {
+                    status: 'running',
+                    startedAt: makerWorldRefreshJobs.get(productId)?.startedAt || now,
+                    updatedAt: now,
+                  });
+                },
+              }
             );
             refreshes.push({ target, payload });
           } catch (error) {
@@ -218,6 +254,7 @@ export function createApp(options = {}) {
           successCount,
           failureCount,
           totalCount: targets.length,
+          queuedAt: null,
           error: '',
         });
       } catch (error) {
@@ -226,6 +263,7 @@ export function createApp(options = {}) {
           status: 'failed',
           updatedAt: finishedAt,
           finishedAt,
+          queuedAt: null,
           error: error.message || 'Falha ao atualizar dados do MakerWorld.',
         });
       } finally {
@@ -237,6 +275,87 @@ export function createApp(options = {}) {
     return {
       alreadyRunning: false,
       job: serializeMakerWorldJob(makerWorldRefreshJobs.get(productId)),
+    };
+  }
+
+  function hasText(value) {
+    return String(value || '').trim().length > 0;
+  }
+
+  function hasNumber(value) {
+    return Number.isFinite(Number(value));
+  }
+
+  function makerWorldImportUrl(body = {}) {
+    const topLevelUrl = normalizeMakerWorldUrl(body.url);
+    if (topLevelUrl) return topLevelUrl;
+    const firstOptionUrl = normalizeMakerWorldUrl(body.options?.[0]?.url);
+    return firstOptionUrl || '';
+  }
+
+  function isMakerWorldUrlOnlyProductPayload(body = {}) {
+    const url = makerWorldImportUrl(body);
+    if (!url) return false;
+    const options = Array.isArray(body.options) ? body.options.filter(Boolean) : [];
+    if (options.length > 1) return false;
+    const option = options[0] || {};
+
+    return ![
+      body.name,
+      body.category,
+      body.page,
+      body.summary,
+      body.productionTime,
+      option.name,
+      option.imageUrl,
+      option.colors,
+      option.score,
+      option.weight,
+      option.productionTime,
+    ].some((value) => hasText(value) || hasNumber(value));
+  }
+
+  async function buildProductFromMakerWorldUrl(body = {}) {
+    const url = makerWorldImportUrl(body);
+    if (!url) {
+      const error = new Error('Informe uma URL válida do MakerWorld para importar o produto.');
+      error.code = 'INVALID_MAKERWORLD_URL';
+      error.status = 422;
+      throw error;
+    }
+
+    let payload;
+    try {
+      payload = await scrapeMakerWorld(url);
+    } catch (error) {
+      error.status = error.code === 'MAKERWORLD_SCRAPER_UNAVAILABLE' ? 502 : error.status || 502;
+      throw error;
+    }
+
+    const draft = {
+      name: '',
+      category: '',
+      summary: '',
+      productionTime: undefined,
+      options: [{ name: '', url, weight: 0, score: 0 }],
+    };
+    const merged = mergeMakerWorldProductData(draft, [{ target: { index: 0, url }, payload }]);
+    const validation = validateProductInput(merged);
+    if (!validation.ok) {
+      const error = new Error(
+        'Não foi possível criar o produto somente com a URL do MakerWorld. Verifique se o modelo possui nome e peso disponíveis.'
+      );
+      error.code = 'MAKERWORLD_IMPORT_INCOMPLETE';
+      error.status = 422;
+      throw error;
+    }
+
+    const now = new Date().toISOString();
+    return {
+      id: crypto.randomUUID(),
+      ...validation.product,
+      createdAt: now,
+      updatedAt: now,
     };
   }
 
@@ -272,6 +391,15 @@ export function createApp(options = {}) {
       'Cache-Control': 'no-store',
     });
     response.end(message);
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function normalizeIntervalMs(value) {
+    const ms = Number(value);
+    return Number.isFinite(ms) && ms >= 0 ? Math.round(ms) : 60_000;
   }
 
   function applyCors(request, response) {
@@ -525,6 +653,23 @@ export function createApp(options = {}) {
       const admin = await requireAdmin(request, response);
       if (!admin) return;
       const body = await parseBody(request);
+      if (isMakerWorldUrlOnlyProductPayload(body)) {
+        try {
+          const product = await buildProductFromMakerWorldUrl(body);
+          await store.createProduct(product);
+          invalidateCatalogCache();
+          writeJson(response, 201, { product });
+        } catch (error) {
+          errorResponse(
+            request,
+            response,
+            error.status || 502,
+            error.code || 'MAKERWORLD_IMPORT_FAILED',
+            error.message || 'Não foi possível criar o produto a partir do MakerWorld.'
+          );
+        }
+        return;
+      }
       const validation = validateProductInput(body);
       if (!validation.ok) {
         errorResponse(request, response, 422, validation.code, validation.message);

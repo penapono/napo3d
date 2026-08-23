@@ -63,6 +63,32 @@ export function normalizeRequiredText(value) {
   return String(value || '').trim();
 }
 
+export function normalizeRatingValue(value) {
+  if (Number.isFinite(Number(value)) && Number(value) > 0) {
+    return Math.round(Number(value) * 10) / 10;
+  }
+  const text = String(value || '')
+    .trim()
+    .replace(',', '.');
+  const match = text.match(/(\d+(?:\.\d+)?)/);
+  if (!match) return undefined;
+  const rating = Number(match[1]);
+  if (!Number.isFinite(rating) || rating <= 0) return undefined;
+  return Math.round(rating * 10) / 10;
+}
+
+export function normalizeRatingCount(value) {
+  if (Number.isFinite(Number(value)) && Number(value) > 0) {
+    return Math.round(Number(value));
+  }
+  const text = String(value || '').trim();
+  const match = text.match(/\((\d+)\)/) || text.match(/(\d+)$/);
+  if (!match) return undefined;
+  const count = Number(match[1]);
+  if (!Number.isFinite(count) || count <= 0) return undefined;
+  return Math.round(count);
+}
+
 export function normalizeUserRole(value) {
   return USER_ROLES.includes(value) ? value : DEFAULT_USER_ROLE;
 }
@@ -123,7 +149,8 @@ export function normalizeProductOptionInput(option = {}, product = {}) {
     source: normalizeOptionalText(option.source),
     dims: normalizeOptionalText(option.dims),
     time: normalizeOptionalText(option.time),
-    rating: normalizeOptionalText(option.rating),
+    rating: normalizeRatingValue(option.rating),
+    ratingCount: normalizeRatingCount(option.ratingCount ?? option.rating_count ?? option.rating),
     material: normalizeOptionalText(option.material),
     colors: normalizeOptionalText(option.colors),
     ams: normalizeOptionalText(option.ams),

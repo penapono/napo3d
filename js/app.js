@@ -164,6 +164,19 @@ function cartSummary() {
   };
 }
 
+function ratingMarkup(option) {
+  const rating = Number(option?.rating);
+  if (!Number.isFinite(rating) || rating <= 0) return '';
+  const ratingCount = Number(option?.ratingCount);
+  const ratingLabel = rating.toFixed(1).replace('.', ',');
+  const countLabel =
+    Number.isFinite(ratingCount) && ratingCount > 0
+      ? `${ratingCount.toLocaleString('pt-BR')} avaliações`
+      : 'sem total informado';
+  const width = `${Math.max(0, Math.min(100, (rating / 5) * 100))}%`;
+  return `<div class="product-rating" aria-label="Avaliação ${text(ratingLabel)} de 5 com ${text(countLabel)}"><span class="product-rating-stars" style="--rating-width:${text(width)}"><span aria-hidden="true">★★★★★</span></span><span class="product-rating-value">${text(ratingLabel)}</span>${Number.isFinite(ratingCount) && ratingCount > 0 ? `<span class="product-rating-count">(${text(ratingCount.toLocaleString('pt-BR'))})</span>` : ''}</div>`;
+}
+
 function card(item) {
   const option = primaryProductOption(item);
   if (!option) return '';
@@ -182,7 +195,7 @@ function card(item) {
         `<div class="tier-price"><span>${tier.label}</span><strong>${money(unitPriceFromWeight(weightInGrams(option), tier.quantity))}</strong><small>por peça</small></div>`
     )
     .join('');
-  return `<article class="product-card"><div class="product-image">${image(imageSource.primary, item.name, imageSource.fallback)}<span class="product-tag">${text(item.category)}</span></div><div class="product-info"><h3>${text(item.name)}</h3><p class="variant-name">${text(description)}</p><div class="tier-prices" aria-label="Preços por quantidade">${tierPrices}</div><button class="quote-button add-to-cart icon-action" type="button" data-product-id="${text(item.id)}" aria-label="Adicionar ${text(item.name)} ao carrinho" title="Adicionar ao carrinho"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4L21 8H7"/><circle cx="10" cy="19" r="1.5"/><circle cx="18" cy="19" r="1.5"/><path d="M16 4v5M13.5 6.5h5"/></svg><span class="sr-only">Adicionar ao carrinho</span></button></div></article>`;
+  return `<article class="product-card"><div class="product-image">${image(imageSource.primary, item.name, imageSource.fallback)}<span class="product-tag">${text(item.category)}</span></div><div class="product-info"><h3>${text(item.name)}</h3>${ratingMarkup(option)}<p class="variant-name">${text(description)}</p><div class="tier-prices" aria-label="Preços por quantidade">${tierPrices}</div><button class="quote-button add-to-cart icon-action" type="button" data-product-id="${text(item.id)}" aria-label="Adicionar ${text(item.name)} ao carrinho" title="Adicionar ao carrinho"><i class="fa-solid fa-cart-plus" aria-hidden="true"></i><span class="sr-only">Adicionar ao carrinho</span></button></div></article>`;
 }
 
 function renderPagination(total) {
@@ -193,7 +206,7 @@ function renderPagination(total) {
     pagination.innerHTML = '';
     return;
   }
-  pagination.innerHTML = `<button class="page-button" type="button" data-page="prev" ${state.page === 1 ? 'disabled' : ''}>←</button>${Array.from({ length: totalPages }, (_, index) => `<button class="page-button${state.page === index + 1 ? ' active' : ''}" type="button" data-page="${index + 1}">${index + 1}</button>`).join('')}<button class="page-button" type="button" data-page="next" ${state.page === totalPages ? 'disabled' : ''}>→</button>`;
+  pagination.innerHTML = `<button class="page-button page-button-icon" type="button" data-page="prev" aria-label="Página anterior" ${state.page === 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>${Array.from({ length: totalPages }, (_, index) => `<button class="page-button${state.page === index + 1 ? ' active' : ''}" type="button" data-page="${index + 1}">${index + 1}</button>`).join('')}<button class="page-button page-button-icon" type="button" data-page="next" aria-label="Próxima página" ${state.page === totalPages ? 'disabled' : ''}><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`;
   pagination.querySelectorAll('.page-button').forEach((button) =>
     button.addEventListener('click', () => {
       const target = button.dataset.page;
@@ -237,7 +250,7 @@ function renderCart() {
       ? summary.lines
           .map(
             (line, index) =>
-              `<div class="cart-item"><div><strong>${text(line.label)}</strong><span>${money(line.unitPrice)} por peça · ${line.quantity} un.</span></div><div class="cart-controls"><button type="button" data-cart-action="decrease" data-cart-index="${index}">−</button><span>${line.quantity}</span><button type="button" data-cart-action="increase" data-cart-index="${index}">+</button><button type="button" data-cart-action="remove" data-cart-index="${index}">Remover</button></div></div>`
+              `<div class="cart-item"><div><strong>${text(line.label)}</strong><span>${money(line.unitPrice)} por peça · ${line.quantity} un.</span></div><div class="cart-controls"><button type="button" data-cart-action="decrease" data-cart-index="${index}" aria-label="Diminuir quantidade"><i class="fa-solid fa-minus" aria-hidden="true"></i></button><span>${line.quantity}</span><button type="button" data-cart-action="increase" data-cart-index="${index}" aria-label="Aumentar quantidade"><i class="fa-solid fa-plus" aria-hidden="true"></i></button><button type="button" data-cart-action="remove" data-cart-index="${index}">Remover</button></div></div>`
           )
           .join('')
       : '<p class="cart-empty">Seu carrinho está vazio.</p>';
@@ -250,7 +263,7 @@ function renderCart() {
       ? summary.lines
           .map(
             (line, index) =>
-              `<div class="page-cart-item"><div><strong>${text(line.label)}</strong><span>${line.quantity} un. · ${money(line.unitPrice)} por peça</span></div><div class="cart-controls"><button type="button" data-page-cart="decrease" data-index="${index}">−</button><span>${line.quantity}</span><button type="button" data-page-cart="increase" data-index="${index}">+</button><button type="button" data-page-cart="remove" data-index="${index}">Remover</button></div></div>`
+              `<div class="page-cart-item"><div><strong>${text(line.label)}</strong><span>${line.quantity} un. · ${money(line.unitPrice)} por peça</span></div><div class="cart-controls"><button type="button" data-page-cart="decrease" data-index="${index}" aria-label="Diminuir quantidade"><i class="fa-solid fa-minus" aria-hidden="true"></i></button><span>${line.quantity}</span><button type="button" data-page-cart="increase" data-index="${index}" aria-label="Aumentar quantidade"><i class="fa-solid fa-plus" aria-hidden="true"></i></button><button type="button" data-page-cart="remove" data-index="${index}">Remover</button></div></div>`
           )
           .join('')
       : '<p class="cart-empty">Seu carrinho está vazio.</p>';

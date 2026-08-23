@@ -80,6 +80,7 @@ export function mergeMakerWorldProductData(product, refreshes) {
   const now = new Date().toISOString();
   const refreshesByIndex = new Map(refreshes.map((entry) => [entry.target.index, entry]));
   const makerWorldTargetCount = makerWorldOptionTargets(product).length;
+  let name = String(product.name || '').trim();
   let summary = String(product.summary || '').trim();
   let productionTime = Number(product.productionTime) || undefined;
 
@@ -98,15 +99,21 @@ export function mergeMakerWorldProductData(product, refreshes) {
     const bestProfile = payload.best_profile || {};
     const imageGallery = selectMakerWorldModelImages(payload.image_urls);
     const imageUrl = firstText(imageGallery[0]) || firstText(option.imageUrl);
+    const modelName = firstText(payload.name) || firstText(option.name);
     const weightGrams = Number(bestProfile.weight_grams);
+    const rating = normalizeRating(bestProfile.rating);
+    const ratingCount = normalizeRatingCount(bestProfile.rating_count);
     const printTimeMinutes = secondsToMinutes(bestProfile.print_time_seconds);
     const next = {
       ...option,
+      name: modelName || option.name,
       url: normalizeMakerWorldUrl(payload.url) || normalizeMakerWorldUrl(option.url) || option.url,
       imageUrl: imageUrl || option.imageUrl || '',
       imageGallery,
       source: 'MakerWorld',
       time: firstText(bestProfile.print_time) || option.time || '',
+      rating,
+      ratingCount,
       thumb: imageUrl || option.thumb || '',
       weight:
         Number.isFinite(weightGrams) && weightGrams > 0
@@ -121,6 +128,7 @@ export function mergeMakerWorldProductData(product, refreshes) {
     };
 
     if (makerWorldTargetCount === 1) {
+      name = modelName || name;
       productionTime = printTimeMinutes || productionTime;
     }
 
@@ -128,6 +136,7 @@ export function mergeMakerWorldProductData(product, refreshes) {
   });
 
   return {
+    name,
     summary,
     productionTime,
     options,
@@ -184,6 +193,18 @@ function secondsToMinutes(value) {
 function firstText(value) {
   const text = String(value || '').trim();
   return text || '';
+}
+
+function normalizeRating(value) {
+  const rating = Number(value);
+  if (!Number.isFinite(rating) || rating <= 0) return undefined;
+  return Math.round(rating * 10) / 10;
+}
+
+function normalizeRatingCount(value) {
+  const count = Number(value);
+  if (!Number.isFinite(count) || count <= 0) return undefined;
+  return Math.round(count);
 }
 
 function makeScraperError(code, message, cause) {

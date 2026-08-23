@@ -57,6 +57,9 @@ function makerWorldRefreshSummary(product) {
     const count = makerWorldOptionCount(product);
     return count ? `${count} URL(s) do MakerWorld disponíveis para atualização.` : '';
   }
+  if (refresh.status === 'queued') {
+    return 'Na fila para atualizar dados do MakerWorld...';
+  }
   if (refresh.status === 'running') {
     const progress = refresh.totalCount
       ? ` ${refresh.successCount + refresh.failureCount}/${refresh.totalCount}`
@@ -84,7 +87,9 @@ function scheduleProductRefreshPoll() {
   clearTimeout(productRefreshPollTimer);
   if (
     state.activeTab !== 'products' ||
-    !state.products.some((product) => product.makerworldRefresh?.status === 'running')
+    !state.products.some((product) =>
+      ['queued', 'running'].includes(product.makerworldRefresh?.status)
+    )
   ) {
     productRefreshPollTimer = null;
     return;
@@ -137,14 +142,23 @@ function productRow(product) {
   const refresh = product.makerworldRefresh;
   const refreshSummary = makerWorldRefreshSummary(product);
   const refreshTone = makerWorldRefreshTone(product);
+  const rating =
+    Number.isFinite(Number(option?.rating)) && Number(option.rating) > 0
+      ? `${Number(option.rating).toFixed(1).replace('.', ',')}★`
+      : '';
+  const ratingCount =
+    Number.isFinite(Number(option?.ratingCount)) && Number(option.ratingCount) > 0
+      ? ` (${Number(option.ratingCount).toLocaleString('pt-BR')})`
+      : '';
+  const makerWorldId = option?.makerworldModelId ? ` · MW ${option.makerworldModelId}` : '';
   return `<article class="admin-list-row">
     <div class="admin-list-row-info">
       <strong>${text(product.name)}</strong>
-      <span>${text(product.category || 'Sem categoria')} · ${Number(option?.weight || 0)} g</span>
+      <span>${text(product.category || 'Sem categoria')} · ${Number(option?.weight || 0)} g${rating ? ` · ${text(`${rating}${ratingCount}`)}` : ''}${text(makerWorldId)}</span>
       ${refreshSummary ? `<span class="admin-refresh-note" data-tone="${text(refreshTone)}">${text(refreshSummary)}</span>` : ''}
     </div>
     <div class="admin-list-row-actions">
-      ${makerWorldCount ? `<button class="admin-icon-button${refresh?.status === 'running' ? ' is-loading' : ''}" data-product-refresh="${text(product.id)}" type="button" aria-label="Atualizar dados do MakerWorld" title="Atualizar dados do MakerWorld" ${refresh?.status === 'running' ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0 2 5.3"/><path d="M20 4v7h-7"/></svg></button>` : ''}
+      ${makerWorldCount ? `<button class="admin-icon-button${['queued', 'running'].includes(refresh?.status) ? ' is-loading' : ''}" data-product-refresh="${text(product.id)}" type="button" aria-label="Atualizar dados do MakerWorld" title="Atualizar dados do MakerWorld" ${['queued', 'running'].includes(refresh?.status) ? 'disabled' : ''}><i class="fa-solid fa-rotate-right" aria-hidden="true"></i></button>` : ''}
       <button class="button button-secondary" data-product-edit="${text(product.id)}" type="button">Editar</button>
       <button class="button button-danger" data-product-delete="${text(product.id)}" type="button">Excluir</button>
     </div>
@@ -204,32 +218,55 @@ function bindProductEvents() {
   $('#admin-product-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
+    const existingProduct = state.products.find((product) => product.id === state.editingProductId);
+    const existingOption = primaryProductOption(existingProduct) || {};
+    const submittedUrl = form.elements.namedItem('url').value.trim();
+    const urlOnlyCreate =
+      !state.editingProductId &&
+      submittedUrl &&
+      ![
+        'name',
+        'category',
+        'page',
+        'summary',
+        'weight',
+        'productionTime',
+        'colors',
+        'score',
+        'imageUrl',
+      ].some((fieldName) => String(form.elements.namedItem(fieldName).value || '').trim());
     const optionName = form.elements.namedItem('name').value.trim();
-    const payload = {
-      name: optionName,
-      category: form.elements.namedItem('category').value.trim(),
-      page: form.elements.namedItem('page').value
-        ? Number(form.elements.namedItem('page').value)
-        : undefined,
-      summary: form.elements.namedItem('summary').value.trim(),
-      productionTime: form.elements.namedItem('productionTime').value
-        ? Number(form.elements.namedItem('productionTime').value)
-        : undefined,
-      options: [
-        {
+    const payload = urlOnlyCreate
+      ? { options: [{ url: submittedUrl }] }
+      : {
           name: optionName,
-          weight: Number(form.elements.namedItem('weight').value),
+          category: form.elements.namedItem('category').value.trim(),
+          page: form.elements.namedItem('page').value
+            ? Number(form.elements.namedItem('page').value)
+            : undefined,
+          summary: form.elements.namedItem('summary').value.trim(),
           productionTime: form.elements.namedItem('productionTime').value
             ? Number(form.elements.namedItem('productionTime').value)
             : undefined,
-          colors: form.elements.namedItem('colors').value.trim(),
-          score: Number(form.elements.namedItem('score').value) || 0,
-          url: form.elements.namedItem('url').value.trim(),
-          imageUrl: form.elements.namedItem('imageUrl').value.trim(),
-        },
-      ],
-    };
-    setStatus('#admin-product-status', 'Salvando...');
+          options: [
+            {
+              ...existingOption,
+              name: optionName,
+              weight: Number(form.elements.namedItem('weight').value),
+              productionTime: form.elements.namedItem('productionTime').value
+                ? Number(form.elements.namedItem('productionTime').value)
+                : undefined,
+              colors: form.elements.namedItem('colors').value.trim(),
+              score: Number(form.elements.namedItem('score').value) || 0,
+              url: submittedUrl,
+              imageUrl: form.elements.namedItem('imageUrl').value.trim(),
+            },
+          ],
+        };
+    setStatus(
+      '#admin-product-status',
+      urlOnlyCreate ? 'Buscando dados do MakerWorld...' : 'Salvando...'
+    );
     try {
       if (state.editingProductId) await adminClient.updateProduct(state.editingProductId, payload);
       else await adminClient.createProduct(payload);

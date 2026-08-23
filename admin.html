@@ -11,6 +11,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
+    <link rel="stylesheet" href="./assets/vendor/fontawesome/css/all.min.css" />
     <link rel="stylesheet" href="./css/styles.css" />
     <link rel="stylesheet" href="./css/admin.css" />
   </head>
@@ -77,7 +78,7 @@
             <div class="section-heading">
               <h2>Usuários</h2>
               <label class="search-box admin-search-box">
-                <span aria-hidden="true">⌕</span>
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                 <input
                   id="admin-users-search"
                   type="search"
@@ -99,19 +100,22 @@
         type="button"
         aria-label="Fechar"
       >
-        ×
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
       <span class="eyebrow" id="admin-product-dialog-eyebrow">Novo produto</span>
       <h2 id="admin-product-dialog-title">Cadastrar produto</h2>
       <form id="admin-product-form">
-        <label>Nome<input name="name" required /></label>
+        <p class="form-status">
+          Cole somente a URL do MakerWorld para criar e sincronizar o produto automaticamente.
+        </p>
+        <label>Nome<input name="name" /></label>
         <div class="form-row">
           <label>Categoria<input name="category" /></label>
           <label>Página do catálogo<input name="page" type="number" min="1" step="1" /></label>
         </div>
         <label>Resumo<input name="summary" /></label>
         <div class="form-row">
-          <label>Peso (g)<input name="weight" type="number" min="1" step="1" required /></label>
+          <label>Peso (g)<input name="weight" type="number" min="1" step="1" /></label>
           <label
             >Tempo de produção (min)<input name="productionTime" type="number" min="1" step="1"
           /></label>
@@ -133,7 +137,7 @@
 
     <dialog class="quantity-dialog admin-dialog" id="admin-order-dialog">
       <button class="dialog-close" id="admin-order-dialog-close" type="button" aria-label="Fechar">
-        ×
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
       <span class="eyebrow">Pedido</span>
       <h2 id="admin-order-dialog-title">Detalhe do pedido</h2>
@@ -159,7 +163,7 @@
 
     <dialog class="quantity-dialog admin-dialog" id="admin-user-dialog">
       <button class="dialog-close" id="admin-user-dialog-close" type="button" aria-label="Fechar">
-        ×
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
       <span class="eyebrow">Usuário</span>
       <h2 id="admin-user-dialog-title">Detalhe do usuário</h2>

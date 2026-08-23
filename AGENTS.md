@@ -18,6 +18,15 @@
 
 ## Production Testing
 
+- Default completion workflow for this repository:
+  - when a code/config change is finished, commit the intended scope;
+  - push it to `main`;
+  - wait for the production deploy triggered by `main`;
+  - validate the deployed result through SSH and/or the public production site before considering the task done.
+- Prefer both checks when feasible:
+  - SSH-side deploy/health confirmation on `ubuntu@napo3d.shop`
+  - public-site/API confirmation on `https://napo3d.shop`
+- If production validation is blocked, say exactly what was not verified and why.
 - Do not commit permanent production credentials to the repo.
 - For production checks, create disposable test users, promote one to `admin`, run the checks, then delete both test users.
 - Keep `pedro.naponoceno@gmail.com` as an `admin` user in production unless the user explicitly asks otherwise.
