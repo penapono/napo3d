@@ -326,7 +326,7 @@ export function createApp(options = {}) {
 
     let payload;
     try {
-      payload = await scrapeMakerWorld(url);
+      payload = await queueMakerWorldScrape(url);
     } catch (error) {
       error.status = error.code === 'MAKERWORLD_SCRAPER_UNAVAILABLE' ? 502 : error.status || 502;
       throw error;

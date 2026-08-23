@@ -672,6 +672,65 @@ test('admin can create a product from only a MakerWorld URL', async (t) => {
   ]);
 });
 
+test('MakerWorld URL-only imports are queued with a minimum interval between scrapes', async (t) => {
+  const scrapeStarts = [];
+  const app = await startTestServer({
+    makerWorldScrapeIntervalMs: 25,
+    async scrapeMakerWorldModel(url) {
+      scrapeStarts.push(Date.now());
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return {
+        url,
+        model_id: url.includes('desk') ? '1820511' : '2838224',
+        name: url.includes('desk') ? 'Organizador Poly-Desk' : 'Porta-cartões Airbus A320',
+        image_urls: [
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/example-1.webp',
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/example-2.webp',
+          'https://makerworld.bblmw.com/makerworld/model/demo/design/example-3.webp',
+        ],
+        best_profile: {
+          rating: 4.9,
+          rating_count: 10,
+          print_time: '2h',
+          print_time_seconds: 7200,
+          weight_grams: 84,
+        },
+      };
+    },
+  });
+  t.after(() => app.close());
+  const admin = await loginAsNewAdmin(app, 'admin-makerworld-import-queue@example.com');
+
+  const [first, second] = await Promise.all([
+    api(app, '/api/admin/products', {
+      method: 'POST',
+      headers: admin,
+      body: JSON.stringify({
+        options: [{ url: 'https://makerworld.com/en/models/1820511-poly-desk-organizer' }],
+      }),
+    }),
+    api(app, '/api/admin/products', {
+      method: 'POST',
+      headers: admin,
+      body: JSON.stringify({
+        options: [
+          {
+            url: 'https://makerworld.com/en/models/2838224-airplane-business-card-holder-a320-airbus',
+          },
+        ],
+      }),
+    }),
+  ]);
+
+  assert.equal(first.response.status, 201);
+  assert.equal(second.response.status, 201);
+  assert.equal(scrapeStarts.length, 2);
+  assert.ok(
+    scrapeStarts[1] - scrapeStarts[0] >= 20,
+    `expected queued imports to be spaced, got ${scrapeStarts[1] - scrapeStarts[0]}ms`
+  );
+});
+
 test('MakerWorld refreshes are queued with a minimum interval between scrapes', async (t) => {
   const scrapeStarts = [];
   const app = await startTestServer({
