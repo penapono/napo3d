@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS products (
   id text PRIMARY KEY,
   name text NOT NULL,
   category text,
+  maglev boolean NOT NULL DEFAULT false,
   reference text,
   summary text,
   description text,
@@ -124,6 +125,7 @@ CREATE TABLE IF NOT EXISTS products (
 );
 
 ALTER TABLE products ADD COLUMN IF NOT EXISTS production_time integer;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS maglev boolean NOT NULL DEFAULT false;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS description text;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS keywords jsonb NOT NULL DEFAULT '[]';
 ALTER TABLE products ADD COLUMN IF NOT EXISTS ai_data jsonb NOT NULL DEFAULT '{}';
@@ -296,13 +298,14 @@ export function createPostgresStore(options = {}) {
       return withClient(async (client) => {
         await client.query(
           `INSERT INTO products (
-             id, name, category, reference, summary, description, keywords, ai_data,
+             id, name, category, maglev, reference, summary, description, keywords, ai_data,
              manual_curation, page, production_time, options, created_at, updated_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12::jsonb, $13, $14)`,
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, $13::jsonb, $14, $15)`,
           [
             product.id,
             product.name,
             nullIfEmpty(product.category),
+            Boolean(product.maglev),
             nullIfEmpty(product.reference),
             nullIfEmpty(product.summary),
             nullIfEmpty(product.description),
@@ -333,21 +336,23 @@ export function createPostgresStore(options = {}) {
           `UPDATE products
              SET name = $2,
                  category = $3,
-                 reference = $4,
-                 summary = $5,
-                 description = $6,
-                 keywords = $7::jsonb,
-                 ai_data = $8::jsonb,
-                 manual_curation = $9::jsonb,
-                 page = $10,
-                 production_time = $11,
-                 options = $12::jsonb,
-                 updated_at = $13
+                 maglev = $4,
+                 reference = $5,
+                 summary = $6,
+                 description = $7,
+                 keywords = $8::jsonb,
+                 ai_data = $9::jsonb,
+                 manual_curation = $10::jsonb,
+                 page = $11,
+                 production_time = $12,
+                 options = $13::jsonb,
+                 updated_at = $14
            WHERE id = $1`,
           [
             id,
             next.name,
             nullIfEmpty(next.category),
+            Boolean(next.maglev),
             nullIfEmpty(next.reference),
             nullIfEmpty(next.summary),
             nullIfEmpty(next.description),
@@ -658,6 +663,7 @@ function mapProductRow(row) {
     id: row.id,
     name: row.name,
     category: undefinedIfNull(row.category),
+    maglev: Boolean(row.maglev),
     reference: undefinedIfNull(row.reference),
     summary: undefinedIfNull(row.summary),
     description: undefinedIfNull(row.description),
@@ -678,13 +684,14 @@ async function replaceProductsTable(client, products) {
   for (const product of products) {
     await client.query(
       `INSERT INTO products (
-         id, name, category, reference, summary, description, keywords, ai_data,
+         id, name, category, maglev, reference, summary, description, keywords, ai_data,
          manual_curation, page, production_time, options, created_at, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12::jsonb, $13, $14)`,
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, $13::jsonb, $14, $15)`,
       [
         product.id,
         product.name,
         nullIfEmpty(product.category),
+        Boolean(product.maglev),
         nullIfEmpty(product.reference),
         nullIfEmpty(product.summary),
         nullIfEmpty(product.description),

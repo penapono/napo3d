@@ -79,6 +79,23 @@ test('buildQuote applies the correct pricing tiers', async () => {
   assert.equal(quote.productionEstimateHours, 33);
 });
 
+test('buildQuote adds the fixed maglev surcharge to the unit price', async () => {
+  const product = {
+    id: 'demo',
+    name: 'Produto Maglev',
+    maglev: true,
+    productionTime: 60,
+    options: [{ name: 'Laranja', weight: 40, productionTime: 90 }],
+  };
+  const quote = buildQuote(
+    [{ productId: 'demo', optionName: 'Laranja', quantity: 10 }],
+    () => product
+  );
+
+  assert.equal(quote.items[0].unitPrice, 215);
+  assert.equal(quote.items[0].lineTotal, 2150);
+});
+
 test('register, login and fetch me', async (t) => {
   const app = await startTestServer();
   t.after(() => app.close());
@@ -721,6 +738,7 @@ test('admin can create a product from only a MakerWorld URL', async (t) => {
         url,
         model_id: '1820511',
         name: 'Organizador Poly-Desk',
+        description: 'Requires maglev base to levitate properly.',
         image_urls: [
           'https://makerworld.bblmw.com/makerworld/user/demo/avatar.webp',
           'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-1.webp',
@@ -761,6 +779,7 @@ test('admin can create a product from only a MakerWorld URL', async (t) => {
   assert.equal(create.json.product.options[0].weight, 752);
   assert.equal(create.json.product.options[0].productionTime, 1018);
   assert.equal(create.json.product.productionTime, 1018);
+  assert.equal(create.json.product.maglev, true);
   assert.deepEqual(create.json.product.options[0].imageGallery, [
     'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-1.webp',
     'https://makerworld.bblmw.com/makerworld/model/demo/design/desk-2.webp',

@@ -21,12 +21,13 @@ test('listProducts starts empty and reflects created products', async () => {
   const store = createMemoryStore();
   assert.deepEqual(await store.listProducts(), []);
 
-  const created = await store.createProduct(sampleProduct());
+  const created = await store.createProduct(sampleProduct({ maglev: true }));
   assert.equal(created.id, 'demo-product');
 
   const listed = await store.listProducts();
   assert.equal(listed.length, 1);
   assert.equal(listed[0].options[0].weight, 40);
+  assert.equal(listed[0].maglev, true);
 });
 
 test('getProduct returns null for an unknown id', async () => {

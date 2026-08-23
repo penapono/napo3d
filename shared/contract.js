@@ -17,6 +17,7 @@ export const ADDRESS_REQUIRED_FIELDS = [
 
 export const DEFAULT_PRODUCTION_TIME_MINUTES = 60;
 export const DEFAULT_MAX_ITEM_QUANTITY = 1000;
+export const MAGLEV_SURCHARGE_REAIS = 200;
 export const USER_ROLES = ['customer', 'admin'];
 export const DEFAULT_USER_ROLE = 'customer';
 export const ORDER_STATUSES = [
@@ -207,6 +208,7 @@ export function validateProductInput(product = {}) {
     product: {
       name,
       category: normalizeOptionalText(product.category) || '',
+      maglev: Boolean(product.maglev),
       reference: normalizeOptionalText(product.reference) || '',
       summary: normalizeOptionalText(product.summary) || '',
       description: normalizeOptionalText(product.description) || '',
@@ -233,9 +235,16 @@ export function weightInGrams(option) {
   return Number.isFinite(grams) ? grams : null;
 }
 
-export function unitPriceFromWeight(weight, quantity) {
+export function productHasMaglev(product = {}) {
+  return Boolean(product?.maglev);
+}
+
+export function unitPriceFromWeight(weight, quantity, maglev = false) {
   if (!Number.isFinite(weight)) return null;
-  return Math.round((weight * resolvePriceTier(quantity).rate) / 1000);
+  return (
+    Math.round((weight * resolvePriceTier(quantity).rate) / 1000) +
+    (maglev ? MAGLEV_SURCHARGE_REAIS : 0)
+  );
 }
 
 export function productionTimeMinutes(product, option) {
@@ -297,7 +306,7 @@ export function buildQuote(items, resolveProduct, options = {}) {
       throw error;
     }
 
-    const unitPrice = unitPriceFromWeight(unitWeightGrams, quantity);
+    const unitPrice = unitPriceFromWeight(unitWeightGrams, quantity, productHasMaglev(product));
     const lineTotal = unitPrice * quantity;
     const productionMinutes = lineProductionMinutes(product, quantity, option);
 
@@ -355,6 +364,6 @@ function productScore(product) {
 
 function minProductPrice(product) {
   const option = primaryProductOption(product);
-  const price = unitPriceFromWeight(weightInGrams(option), 1);
+  const price = unitPriceFromWeight(weightInGrams(option), 1, productHasMaglev(product));
   return Number.isFinite(price) ? price : Infinity;
 }

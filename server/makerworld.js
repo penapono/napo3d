@@ -1,5 +1,7 @@
 const DEFAULT_MAKERWORLD_SCRAPER_URL = 'http://127.0.0.1:8010';
 const MAKERWORLD_HOSTS = new Set(['makerworld.com', 'www.makerworld.com']);
+const MAGLEV_PATTERN = /\bmaglev\b/i;
+const MAGLEV_NEGATION_PATTERN = /\b(?:sem|without|no)\s+maglev\b/i;
 
 export function normalizeMakerWorldUrl(value) {
   if (!value) return '';
@@ -82,6 +84,7 @@ export function mergeMakerWorldProductData(product, refreshes) {
   const makerWorldTargetCount = makerWorldOptionTargets(product).length;
   let name = String(product.name || '').trim();
   let summary = String(product.summary || '').trim();
+  let maglev = Boolean(product.maglev);
   let productionTime = Number(product.productionTime) || undefined;
 
   const options = (product.options || []).map((option, index) => {
@@ -96,6 +99,7 @@ export function mergeMakerWorldProductData(product, refreshes) {
     }
 
     const payload = refresh.payload || {};
+    maglev = maglev || payloadRequiresMaglev(payload);
     const bestProfile = payload.best_profile || {};
     const imageGallery = selectMakerWorldModelImages(payload.image_urls);
     const imageUrl = firstText(imageGallery[0]) || firstText(option.imageUrl);
@@ -137,6 +141,7 @@ export function mergeMakerWorldProductData(product, refreshes) {
 
   return {
     name,
+    maglev,
     summary,
     productionTime,
     options,
@@ -193,6 +198,12 @@ function secondsToMinutes(value) {
 function firstText(value) {
   const text = String(value || '').trim();
   return text || '';
+}
+
+function payloadRequiresMaglev(payload = {}) {
+  const description = firstText(payload.description);
+  if (!description) return false;
+  return MAGLEV_PATTERN.test(description) && !MAGLEV_NEGATION_PATTERN.test(description);
 }
 
 function normalizeRating(value) {

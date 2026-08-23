@@ -1,5 +1,6 @@
 import {
   lineProductionMinutes,
+  productHasMaglev,
   normalizePostalCode,
   sortProducts,
   unitPriceFromWeight,
@@ -258,7 +259,8 @@ function cartLine(entry) {
   const item = findProduct(entry.productId);
   const option = primaryProductOption(item);
   if (!item || !option) return null;
-  const unitPrice = unitPriceFromWeight(weightInGrams(option), entry.quantity) || 0;
+  const unitPrice =
+    unitPriceFromWeight(weightInGrams(option), entry.quantity, productHasMaglev(item)) || 0;
   return {
     item,
     option,
@@ -301,7 +303,7 @@ function tierPricesMarkup(item, option) {
   ]
     .map(
       (tier) =>
-        `<div class="tier-price"><span>${tier.label}</span><strong>${money(unitPriceFromWeight(weightInGrams(option), tier.quantity))}</strong><small class="tier-production-time">${text(formatTierProductionTime(lineProductionMinutes(item, tier.quantity, option)))}</small><small>por peça</small></div>`
+        `<div class="tier-price"><span>${tier.label}</span><strong>${money(unitPriceFromWeight(weightInGrams(option), tier.quantity, productHasMaglev(item)))}</strong><small class="tier-production-time">${text(formatTierProductionTime(lineProductionMinutes(item, tier.quantity, option)))}</small><small>por peça</small></div>`
     )
     .join('');
 }
@@ -576,7 +578,12 @@ function updateQuantityPreview() {
   if (!state.pendingItem) return;
   const quantity = Math.max(1, Number($('#quantity-input').value) || 1);
   $('#quantity-input').value = quantity;
-  const unitPrice = unitPriceFromWeight(weightInGrams(state.pendingItem.option), quantity) || 0;
+  const unitPrice =
+    unitPriceFromWeight(
+      weightInGrams(state.pendingItem.option),
+      quantity,
+      productHasMaglev(state.pendingItem.item)
+    ) || 0;
   $('#quantity-unit-price').textContent = money(unitPrice);
   $('#quantity-total-price').textContent = `Total: ${money(unitPrice * quantity)}`;
   $('#quantity-production-time').textContent = `Produção estimada: ${formatDuration(
