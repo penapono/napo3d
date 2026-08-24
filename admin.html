@@ -115,19 +115,21 @@
         <label>Resumo<input name="summary" /></label>
         <label>Descrição rica<textarea name="description" rows="5"></textarea></label>
         <div class="form-row">
-          <label>Peso (g)<input name="weight" type="number" min="1" step="1" /></label>
           <label
-            >Tempo de produção (min)<input name="productionTime" type="number" min="1" step="1"
+            >Tempo base de produção (min)<input
+              name="productionTime"
+              type="number"
+              min="1"
+              step="1"
           /></label>
         </div>
-        <div class="form-row">
-          <label>Cor(es)<input name="colors" /></label>
-          <label>Pontuação<input name="score" type="number" step="1" /></label>
+        <div class="admin-options-heading">
+          <h3>Modelos e tamanhos</h3>
+          <button class="button button-secondary" id="admin-option-add" type="button">
+            Adicionar modelo
+          </button>
         </div>
-        <div class="form-row">
-          <label>URL do MakerWorld<input name="url" /></label>
-          <label>URL da imagem<input name="imageUrl" /></label>
-        </div>
+        <div id="admin-product-options"></div>
         <p class="form-status" id="admin-product-status" role="status"></p>
         <div class="inline-actions">
           <button class="button button-primary" type="submit">Salvar produto</button>

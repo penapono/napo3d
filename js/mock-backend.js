@@ -4,7 +4,7 @@ import {
   sortProducts,
   validateAddressInput,
 } from '../shared/contract.js';
-import { buildCategoryCounts, flattenCatalogProducts } from '../shared/catalog.js';
+import { buildCategoryCounts, groupCatalogProducts } from '../shared/catalog.js';
 
 const DB_KEY = 'napo3d-mock-db';
 
@@ -67,14 +67,14 @@ export function createMockBackend({ getToken, loadCatalog }) {
   }
 
   async function resolveQuote(items) {
-    const products = flattenCatalogProducts(await loadCatalog());
+    const products = groupCatalogProducts(await loadCatalog());
     const map = new Map(products.map((product) => [product.id, product]));
     return buildQuote(items, (productId) => map.get(productId));
   }
 
   return {
     async getProducts(params = {}) {
-      const products = flattenCatalogProducts(await loadCatalog());
+      const products = groupCatalogProducts(await loadCatalog());
       const categories = buildCategoryCounts(products);
       const query = String(params.query || '')
         .trim()
@@ -103,7 +103,7 @@ export function createMockBackend({ getToken, loadCatalog }) {
       };
     },
     async getProduct(productId) {
-      const products = flattenCatalogProducts(await loadCatalog());
+      const products = groupCatalogProducts(await loadCatalog());
       const product = products.find((item) => item.id === productId);
       if (!product) throw apiError('PRODUCT_NOT_FOUND', 'Produto não encontrado.', 404);
       return { product };

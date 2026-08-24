@@ -146,8 +146,17 @@ export function validateAddressInput(address = {}) {
 
 export function normalizeProductOptionInput(option = {}, product = {}) {
   const fallbackImageUrl = normalizeOptionalText(product.reference);
+  const explicitName = normalizeRequiredText(option.name);
+  const model = normalizeOptionalText(option.model) || normalizeOptionalText(option.variantModel);
+  const size = normalizeOptionalText(option.size) || normalizeOptionalText(option.variantSize);
+  const derivedName =
+    explicitName ||
+    [model, size].filter(Boolean).join(' · ') ||
+    normalizeRequiredText(product.name);
   return {
-    name: normalizeRequiredText(option.name),
+    name: derivedName,
+    model,
+    size,
     url: normalizeOptionalText(option.url),
     imageUrl: normalizeOptionalText(option.imageUrl) || fallbackImageUrl,
     imageGallery: normalizeOptionalTextList(option.imageGallery),

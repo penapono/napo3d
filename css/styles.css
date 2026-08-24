@@ -661,6 +661,19 @@ a {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 24px;
 }
+.product-variant-selectors {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 18px;
+}
+.variant-caption {
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 4px 0 0;
+  text-transform: uppercase;
+}
 .quantity-gallery {
   display: flex;
   gap: 10px;
@@ -856,6 +869,10 @@ a {
   width: 84px;
 }
 .product-detail-content h1 {
+  margin-bottom: 0;
+}
+.product-detail-content .product-variant-selectors {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   margin-bottom: 0;
 }
 .product-detail-meta {

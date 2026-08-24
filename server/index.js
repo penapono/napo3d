@@ -15,11 +15,7 @@ import {
   validateAddressInput,
   validateProductInput,
 } from '../shared/contract.js';
-import {
-  buildCategoryCounts,
-  flattenCatalogProducts,
-  hasLegacyProductVariations,
-} from '../shared/catalog.js';
+import { buildCategoryCounts, groupCatalogProducts } from '../shared/catalog.js';
 import { processPendingEmails, resolveMailerConfig } from './mailer.js';
 import {
   collectProductImageUrls,
@@ -91,12 +87,11 @@ export function createApp(options = {}) {
     items: [],
   };
   let seedCatalogPromise = null;
-  let productMigrationPromise = null;
 
   async function seedCatalogIfNeeded() {
     const raw = await readFile(catalogSeedPath, 'utf8');
     const now = new Date().toISOString();
-    const seedProducts = flattenCatalogProducts(JSON.parse(raw)).map((product) => ({
+    const seedProducts = JSON.parse(raw).map((product) => ({
       ...product,
       createdAt: now,
       updatedAt: now,
@@ -107,28 +102,12 @@ export function createApp(options = {}) {
     }
   }
 
-  async function migrateCatalogIfNeeded() {
-    const current = await store.listProducts();
-    if (!current.some(hasLegacyProductVariations)) return;
-    const migrated = flattenCatalogProducts(current).map((product) => ({
-      ...product,
-      updatedAt: new Date().toISOString(),
-    }));
-    await store.replaceProducts(migrated);
-    invalidateCatalogCache();
-    console.log(`[catalog] flattened ${current.length} legacy products into ${migrated.length}.`);
-  }
-
   async function ensureStoreReady() {
     await store.init?.();
     if (!seedCatalogPromise) {
       seedCatalogPromise = seedCatalogIfNeeded();
     }
     await seedCatalogPromise;
-    if (!productMigrationPromise) {
-      productMigrationPromise = migrateCatalogIfNeeded();
-    }
-    await productMigrationPromise;
   }
 
   function invalidateCatalogCache() {
@@ -556,9 +535,13 @@ export function createApp(options = {}) {
     if (catalogState.items.length && Date.now() - catalogState.loadedAt < 5_000) {
       return catalogState.items;
     }
-    catalogState.items = await store.listProducts();
+    catalogState.items = groupCatalogProducts(await store.listProducts());
     catalogState.loadedAt = Date.now();
     return catalogState.items;
+  }
+
+  async function loadRawCatalog() {
+    return store.listProducts();
   }
 
   function errorResponse(request, response, status, code, message, details) {
@@ -1032,7 +1015,9 @@ export function createApp(options = {}) {
     if (request.method === 'GET' && pathname.startsWith('/api/products/')) {
       const catalog = await loadCatalog();
       const productId = decodeURIComponent(pathname.split('/').pop());
-      const product = catalog.find((entry) => entry.id === productId);
+      const product = catalog.find(
+        (entry) => entry.id === productId || (entry.sourceProductIds || []).includes(productId)
+      );
       if (!product) {
         errorResponse(request, response, 404, 'PRODUCT_NOT_FOUND', 'Produto não encontrado.');
         return;
@@ -1044,7 +1029,7 @@ export function createApp(options = {}) {
     if (request.method === 'GET' && pathname === '/api/admin/products') {
       const admin = await requireAdmin(request, response);
       if (!admin) return;
-      const products = await loadCatalog();
+      const products = await loadRawCatalog();
       writeJson(response, 200, {
         products: sortProducts(products.map(withAdminProductMeta), 'name'),
       });

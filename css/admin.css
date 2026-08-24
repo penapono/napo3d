@@ -107,6 +107,10 @@
   margin: 18px 0 10px;
 }
 
+.admin-options-heading h3 {
+  margin: 0;
+}
+
 .admin-option-row {
   background: var(--paper);
   border: 1px solid var(--line);

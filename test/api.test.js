@@ -540,6 +540,57 @@ test('admin can create, update, and delete a product; storefront sees the change
   assert.equal(afterDelete.response.status, 404);
 });
 
+test('public catalog keeps multiple models and sizes under one product family', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+  const admin = await loginAsNewAdmin(app, 'admin-family-products@example.com');
+
+  const create = await api(app, '/api/admin/products', {
+    method: 'POST',
+    headers: admin,
+    body: JSON.stringify({
+      name: 'Chaveiro NFC',
+      category: 'Brinde inteligente / NFC',
+      summary: 'Uma família de chaveiros NFC.',
+      options: [
+        {
+          model: 'Corporativo',
+          size: '25 mm',
+          weight: 7,
+          imageUrl: 'https://example.com/nfc-25.webp',
+        },
+        {
+          model: 'Corporativo',
+          size: '35 mm',
+          weight: 9,
+          imageUrl: 'https://example.com/nfc-35.webp',
+        },
+        {
+          model: 'Compacto',
+          weight: 6,
+          imageUrl: 'https://example.com/nfc-compacto.webp',
+        },
+      ],
+    }),
+  });
+  assert.equal(create.response.status, 201);
+
+  const list = await api(app, '/api/products?limit=200&query=nfc');
+  const family = list.json.items.find((item) => item.id === create.json.product.id);
+  assert.ok(family);
+  assert.equal(family.options.length, 3);
+  assert.deepEqual(
+    family.options.map((option) => option.name),
+    ['Corporativo · 25 mm', 'Corporativo · 35 mm', 'Compacto']
+  );
+
+  const quote = buildQuote(
+    [{ productId: family.id, optionName: 'Corporativo · 35 mm', quantity: 12 }],
+    (productId) => (productId === family.id ? family : null)
+  );
+  assert.equal(quote.items[0].unitWeightGrams, 9);
+});
+
 test('admin product manual curation metadata persists and is returned in admin responses', async (t) => {
   const app = await startTestServer();
   t.after(() => app.close());

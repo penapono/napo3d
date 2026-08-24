@@ -48,6 +48,7 @@ const state = {
   backendMode: 'mock',
   productDetail: null,
   productPageRequestKey: 0,
+  selectedOptionNames: {},
 };
 
 const ROUTE_PATHS = {
@@ -257,7 +258,7 @@ function buildCatalogStructuredData() {
 }
 
 function buildProductStructuredData(item) {
-  const option = primaryProductOption(item);
+  const { option } = selectedOptionState(item);
   if (!option) return [];
   const imageUrls = productGalleryImages(item, option).map((url) => absoluteSiteUrl(url));
   const canonical = absoluteSiteUrl(pathForPage('product', { productId: item.id }));
@@ -297,7 +298,7 @@ function updateSeoForCurrentPage(product = null) {
   const page = currentPage();
   if (page === 'product') {
     if (product) {
-      const option = primaryProductOption(product);
+      const { option } = selectedOptionState(product);
       const imageUrl = firstFilledText(
         option?.imageUrl,
         Array.isArray(option?.imageGallery) ? option.imageGallery[0] : '',
@@ -418,6 +419,68 @@ function productGalleryImages(item, option) {
   ];
 }
 
+function productOptions(item) {
+  return Array.isArray(item?.options) ? item.options.filter(Boolean) : [];
+}
+
+function optionIdentity(item, option) {
+  return (
+    firstFilledText(
+      option?.name,
+      [option?.model, option?.size].filter(Boolean).join(' · '),
+      item?.name
+    ) || ''
+  );
+}
+
+function optionModelLabel(item, option) {
+  return firstFilledText(option?.model, option?.name, item?.name);
+}
+
+function optionSizeLabel(option) {
+  return firstFilledText(option?.size, option?.variant);
+}
+
+function optionGroups(item) {
+  const groups = new Map();
+  for (const option of productOptions(item)) {
+    const model = optionModelLabel(item, option);
+    if (!groups.has(model)) groups.set(model, []);
+    groups.get(model).push(option);
+  }
+  return [...groups.entries()].map(([model, options]) => ({ model, options }));
+}
+
+function selectedOptionState(item, preferredOptionName = '') {
+  const options = productOptions(item);
+  if (!options.length) return { option: null, groups: [], activeGroup: null, sizes: [] };
+  const requested =
+    preferredOptionName || (item?.id ? state.selectedOptionNames[item.id] || '' : '');
+  const option =
+    options.find((candidate) => optionIdentity(item, candidate) === requested) || options[0];
+  const groups = optionGroups(item);
+  const activeGroup =
+    groups.find((group) =>
+      group.options.some(
+        (candidate) => optionIdentity(item, candidate) === optionIdentity(item, option)
+      )
+    ) || groups[0];
+  const sizes = (activeGroup?.options || []).map((candidate) => ({
+    value: optionIdentity(item, candidate),
+    label: optionSizeLabel(candidate) || optionIdentity(item, candidate),
+    hasExplicitSize: Boolean(optionSizeLabel(candidate)),
+  }));
+  state.selectedOptionNames[item.id] = optionIdentity(item, option);
+  return { option, groups, activeGroup, sizes };
+}
+
+function setSelectedOption(item, optionName) {
+  const { option } = selectedOptionState(item, optionName);
+  if (!option) return null;
+  state.selectedOptionNames[item.id] = optionIdentity(item, option);
+  return option;
+}
+
 function image(url, alt, fallbackUrl = '') {
   if (!url) return '<div class="image-fallback">Imagem<br>indisponível</div>';
   const fallback =
@@ -434,19 +497,35 @@ function findProduct(productId) {
 async function loadProductDetail(productId) {
   if (!productId) return null;
   const cached =
-    findProduct(productId) || (state.productDetail?.id === productId ? state.productDetail : null);
+    findProduct(productId) ||
+    (state.productDetail?.id === productId ||
+    (state.productDetail?.sourceProductIds || []).includes(productId)
+      ? state.productDetail
+      : null);
   if (cached) {
     state.productDetail = cached;
     return cached;
   }
   const result = await apiClient.getProduct(productId);
   state.productDetail = result.product || null;
+  const matchedOption = productOptions(state.productDetail).find(
+    (option) => String(option?.sourceProductId || '').trim() === productId
+  );
+  if (matchedOption && state.productDetail) {
+    state.selectedOptionNames[state.productDetail.id] = optionIdentity(
+      state.productDetail,
+      matchedOption
+    );
+  }
   return state.productDetail;
 }
 
 function cartLine(entry) {
   const item = findProduct(entry.productId);
-  const option = primaryProductOption(item);
+  const option =
+    productOptions(item).find(
+      (candidate) => optionIdentity(item, candidate) === entry.optionName
+    ) || primaryProductOption(item);
   if (!item || !option) return null;
   const unitPrice =
     unitPriceFromWeight(weightInGrams(option), entry.quantity, productHasMaglev(item)) || 0;
@@ -454,7 +533,7 @@ function cartLine(entry) {
     item,
     option,
     quantity: entry.quantity,
-    label: item.name,
+    label: productOptions(item).length > 1 ? `${item.name} — ${option.name}` : item.name,
     unitPrice,
     lineTotal: unitPrice * entry.quantity,
     productionMinutes: lineProductionMinutes(item, entry.quantity, option),
@@ -505,7 +584,7 @@ function cardAction(item, option) {
 }
 
 function card(item) {
-  const option = primaryProductOption(item);
+  const { option } = selectedOptionState(item);
   if (!option) return '';
   const description =
     item.summary ||
@@ -513,7 +592,8 @@ function card(item) {
     copy[item.category] ||
     'Uma peça especial, feita para fazer parte da sua rotina.';
   const imageSource = productImage(item, option);
-  return `<article class="product-card" data-product-link="${text(item.id)}" tabindex="0" role="link" aria-label="Abrir página de ${text(item.name)}"><div class="product-image">${image(imageSource.primary, item.name, imageSource.fallback)}<span class="product-tag">${text(item.category)}</span></div><div class="product-info"><h3>${text(item.name)}</h3>${ratingMarkup(option)}<p class="variant-name">${text(description)}</p><div class="tier-prices" aria-label="Preços por quantidade">${tierPricesMarkup(item, option)}</div>${cardAction(item, option)}</div></article>`;
+  const variantCount = productOptions(item).length;
+  return `<article class="product-card" data-product-link="${text(item.id)}" tabindex="0" role="link" aria-label="Abrir página de ${text(item.name)}"><div class="product-image">${image(imageSource.primary, item.name, imageSource.fallback)}<span class="product-tag">${text(item.category)}</span></div><div class="product-info"><h3>${text(item.name)}</h3>${ratingMarkup(option)}${variantCount > 1 ? `<p class="variant-caption">${text(`${variantCount} modelos/tamanhos disponíveis`)}</p>` : ''}<p class="variant-name">${text(description)}</p><div class="tier-prices" aria-label="Preços por quantidade">${tierPricesMarkup(item, option)}</div>${cardAction(item, option)}</div></article>`;
 }
 
 async function refreshCatalog() {
@@ -608,13 +688,13 @@ function detailPrimaryAction(item, option) {
   if (state.me?.role === 'admin' && option?.url) {
     return `<a class="button button-primary" href="${text(option.url)}" target="_blank" rel="noreferrer noopener"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Abrir no MakerWorld</a>`;
   }
-  return `<button class="button button-primary" type="button" data-detail-add-to-cart="${text(item.id)}"><i class="fa-solid fa-cart-plus" aria-hidden="true"></i> Adicionar ao carrinho</button>`;
+  return `<button class="button button-primary" type="button" data-detail-add-to-cart="${text(item.id)}" data-detail-option="${text(optionIdentity(item, option))}"><i class="fa-solid fa-cart-plus" aria-hidden="true"></i> Adicionar ao carrinho</button>`;
 }
 
 function renderProductPageContent(item) {
   const shell = $('#product-page-shell');
   if (!shell) return;
-  const option = primaryProductOption(item);
+  const { option, groups, activeGroup, sizes } = selectedOptionState(item);
   if (!option) {
     shell.innerHTML = `<div class="info-section"><h1>${text(item.name)}</h1><p class="page-lead">Este produto ainda não possui uma configuração disponível para compra.</p></div>`;
     return;
@@ -629,7 +709,13 @@ function renderProductPageContent(item) {
   const share = productShareData(item);
   const weight = Number(weightInGrams(option));
   const baseProduction = lineProductionMinutes(item, 1, option);
-  shell.innerHTML = `<div class="product-detail-layout"><div class="product-detail-media"><div class="product-detail-hero">${image(gallery[0], item.name, gallery[1] || '')}</div>${gallery.length > 1 ? `<div class="product-detail-gallery" aria-label="Galeria do produto">${gallery.map((url, index) => `<button class="product-detail-thumb${index === 0 ? ' is-active' : ''}" type="button" data-product-image="${text(url)}" aria-label="Ver imagem ${index + 1}"><img src="${text(url)}" alt="Imagem ${index + 1} de ${text(item.name)}" loading="lazy" /></button>`).join('')}</div>` : ''}</div><div class="product-detail-content"><span class="eyebrow">${text(item.category)}</span><h1>${text(item.name)}</h1>${ratingMarkup(option)}<p class="page-lead">${text(summary)}</p><div class="product-detail-meta">${weight > 0 ? `<div><span>Peso estimado</span><strong>${text(`${weight.toLocaleString('pt-BR')} g`)}</strong></div>` : ''}${baseProduction > 0 ? `<div><span>Produção base</span><strong>${text(formatTierProductionTime(baseProduction))}</strong></div>` : ''}${option.url ? `<div><span>Origem</span><strong>MakerWorld</strong></div>` : ''}</div><div class="tier-prices product-detail-tiers" aria-label="Preços por quantidade">${tierPricesMarkup(item, option)}</div><div class="product-detail-actions">${detailPrimaryAction(item, option)}${typeof navigator.share === 'function' ? `<button class="button button-secondary" type="button" data-product-share="${text(item.id)}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Compartilhar</button>` : ''}</div><div class="product-share-panel"><strong>Compartilhar link</strong><div class="product-share-links"><a class="share-chip" href="${text(share.whatsappUrl)}" target="_blank" rel="noreferrer noopener"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i> WhatsApp</a><a class="share-chip" href="${text(share.facebookUrl)}" target="_blank" rel="noreferrer noopener"><i class="fa-brands fa-facebook-f" aria-hidden="true"></i> Facebook</a><button class="share-chip" type="button" data-copy-product-link="${text(item.id)}"><i class="fa-solid fa-link" aria-hidden="true"></i> Copiar link</button></div><p class="form-status" id="product-share-status" role="status"></p></div><section class="product-detail-copy"><h2>Sobre esta peça</h2><p>${text(body)}</p></section></div></div>`;
+  const showModelSelector = groups.length > 1;
+  const showSizeSelector = sizes.length > 1 && sizes.some((entry) => entry.hasExplicitSize);
+  const selectorsMarkup =
+    showModelSelector || showSizeSelector
+      ? `<div class="product-variant-selectors">${showModelSelector ? `<label class="sort-box"><span>Modelo</span><select data-product-model>${groups.map((group) => `<option value="${text(group.model)}"${group.model === activeGroup?.model ? ' selected' : ''}>${text(group.model)}</option>`).join('')}</select></label>` : ''}${showSizeSelector ? `<label class="sort-box"><span>Tamanho</span><select data-product-size>${sizes.map((entry) => `<option value="${text(entry.value)}"${entry.value === optionIdentity(item, option) ? ' selected' : ''}>${text(entry.label)}</option>`).join('')}</select></label>` : ''}</div>`
+      : '';
+  shell.innerHTML = `<div class="product-detail-layout"><div class="product-detail-media"><div class="product-detail-hero">${image(gallery[0], item.name, gallery[1] || '')}</div>${gallery.length > 1 ? `<div class="product-detail-gallery" aria-label="Galeria do produto">${gallery.map((url, index) => `<button class="product-detail-thumb${index === 0 ? ' is-active' : ''}" type="button" data-product-image="${text(url)}" aria-label="Ver imagem ${index + 1}"><img src="${text(url)}" alt="Imagem ${index + 1} de ${text(item.name)}" loading="lazy" /></button>`).join('')}</div>` : ''}</div><div class="product-detail-content"><span class="eyebrow">${text(item.category)}</span><h1>${text(item.name)}</h1>${ratingMarkup(option)}${selectorsMarkup}<p class="page-lead">${text(summary)}</p><div class="product-detail-meta">${weight > 0 ? `<div><span>Peso estimado</span><strong>${text(`${weight.toLocaleString('pt-BR')} g`)}</strong></div>` : ''}${baseProduction > 0 ? `<div><span>Produção base</span><strong>${text(formatTierProductionTime(baseProduction))}</strong></div>` : ''}${option.url ? `<div><span>Origem</span><strong>MakerWorld</strong></div>` : ''}</div><div class="tier-prices product-detail-tiers" aria-label="Preços por quantidade">${tierPricesMarkup(item, option)}</div><div class="product-detail-actions">${detailPrimaryAction(item, option)}${typeof navigator.share === 'function' ? `<button class="button button-secondary" type="button" data-product-share="${text(item.id)}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Compartilhar</button>` : ''}</div><div class="product-share-panel"><strong>Compartilhar link</strong><div class="product-share-links"><a class="share-chip" href="${text(share.whatsappUrl)}" target="_blank" rel="noreferrer noopener"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i> WhatsApp</a><a class="share-chip" href="${text(share.facebookUrl)}" target="_blank" rel="noreferrer noopener"><i class="fa-brands fa-facebook-f" aria-hidden="true"></i> Facebook</a><button class="share-chip" type="button" data-copy-product-link="${text(item.id)}"><i class="fa-solid fa-link" aria-hidden="true"></i> Copiar link</button></div><p class="form-status" id="product-share-status" role="status"></p></div><section class="product-detail-copy"><h2>Sobre esta peça</h2><p>${text(body)}</p></section></div></div>`;
   shell.querySelectorAll('[data-product-image]').forEach((button) => {
     button.addEventListener('click', () => {
       shell
@@ -639,8 +725,19 @@ function renderProductPageContent(item) {
       if (hero) hero.src = button.dataset.productImage || '';
     });
   });
+  shell.querySelector('[data-product-model]')?.addEventListener('change', (event) => {
+    const nextGroup = groups.find((group) => group.model === event.target.value);
+    const nextOption = nextGroup?.options[0];
+    if (!nextOption) return;
+    setSelectedOption(item, optionIdentity(item, nextOption));
+    renderProductPageContent(item);
+  });
+  shell.querySelector('[data-product-size]')?.addEventListener('change', (event) => {
+    setSelectedOption(item, event.target.value);
+    renderProductPageContent(item);
+  });
   shell.querySelector('[data-detail-add-to-cart]')?.addEventListener('click', () => {
-    openQuantityDialog(item.id);
+    openQuantityDialog(item.id, optionIdentity(item, option));
   });
   shell.querySelector('[data-product-share]')?.addEventListener('click', async () => {
     try {
@@ -734,20 +831,56 @@ function renderCart() {
     ($('#page-production-total').textContent = formatDuration(summary.productionMinutes));
 }
 
-function openQuantityDialog(productId) {
+function openQuantityDialog(productId, optionName = '') {
   const item = findProduct(productId);
-  const option = primaryProductOption(item);
-  if (!item || !option) return;
-  state.pendingItem = { item, option };
-  const source = productImage(item, option);
+  if (!item) return;
+  const option = setSelectedOption(item, optionName);
+  if (!option) return;
+  state.pendingItem = { item, optionName: optionIdentity(item, option) };
   $('#quantity-title').textContent = item.name;
-  $('#quantity-description').textContent = item.description || item.summary || option.name || '';
-  $('#quantity-image').src = source.primary;
-  $('#quantity-image').alt = item.name;
-  renderQuantityGallery(option);
   $('#quantity-input').value = 1;
+  renderQuantityDialogState();
   updateQuantityPreview();
   $('#quantity-dialog').showModal();
+}
+
+function renderQuantityDialogState() {
+  if (!state.pendingItem) return;
+  const { item } = state.pendingItem;
+  const { option, groups, activeGroup, sizes } = selectedOptionState(
+    item,
+    state.pendingItem.optionName
+  );
+  if (!option) return;
+  state.pendingItem.optionName = optionIdentity(item, option);
+  const source = productImage(item, option);
+  $('#quantity-description').textContent = item.description || item.summary || option.name || '';
+  $('#quantity-image').src = source.primary;
+  $('#quantity-image').alt = `${item.name} — ${option.name}`;
+  const selectorsNode = $('#quantity-variant-selectors');
+  if (selectorsNode) {
+    const showModelSelector = groups.length > 1;
+    const showSizeSelector = sizes.length > 1 && sizes.some((entry) => entry.hasExplicitSize);
+    selectorsNode.hidden = !(showModelSelector || showSizeSelector);
+    selectorsNode.innerHTML =
+      showModelSelector || showSizeSelector
+        ? `${showModelSelector ? `<label class="sort-box"><span>Modelo</span><select data-quantity-model>${groups.map((group) => `<option value="${text(group.model)}"${group.model === activeGroup?.model ? ' selected' : ''}>${text(group.model)}</option>`).join('')}</select></label>` : ''}${showSizeSelector ? `<label class="sort-box"><span>Tamanho</span><select data-quantity-size>${sizes.map((entry) => `<option value="${text(entry.value)}"${entry.value === optionIdentity(item, option) ? ' selected' : ''}>${text(entry.label)}</option>`).join('')}</select></label>` : ''}`
+        : '';
+    selectorsNode.querySelector('[data-quantity-model]')?.addEventListener('change', (event) => {
+      const nextGroup = groups.find((group) => group.model === event.target.value);
+      const nextOption = nextGroup?.options[0];
+      if (!nextOption) return;
+      state.pendingItem.optionName = optionIdentity(item, nextOption);
+      renderQuantityDialogState();
+      updateQuantityPreview();
+    });
+    selectorsNode.querySelector('[data-quantity-size]')?.addEventListener('change', (event) => {
+      state.pendingItem.optionName = event.target.value;
+      renderQuantityDialogState();
+      updateQuantityPreview();
+    });
+  }
+  renderQuantityGallery(option);
 }
 
 function renderQuantityGallery(option) {
@@ -778,24 +911,24 @@ function renderQuantityGallery(option) {
 
 function updateQuantityPreview() {
   if (!state.pendingItem) return;
+  const option = setSelectedOption(state.pendingItem.item, state.pendingItem.optionName);
+  if (!option) return;
   const quantity = Math.max(1, Number($('#quantity-input').value) || 1);
   $('#quantity-input').value = quantity;
   const unitPrice =
     unitPriceFromWeight(
-      weightInGrams(state.pendingItem.option),
+      weightInGrams(option),
       quantity,
       productHasMaglev(state.pendingItem.item)
     ) || 0;
   $('#quantity-unit-price').textContent = money(unitPrice);
   $('#quantity-total-price').textContent = `Total: ${money(unitPrice * quantity)}`;
   $('#quantity-production-time').textContent = `Produção + tempo de envio: ${formatDuration(
-    lineProductionMinutes(state.pendingItem.item, quantity, state.pendingItem.option)
+    lineProductionMinutes(state.pendingItem.item, quantity, option)
   )}`;
 }
 
-function addToCart(productId, quantity) {
-  const item = findProduct(productId);
-  const optionName = primaryProductOption(item)?.name || item?.name || '';
+function addToCart(productId, optionName, quantity) {
   const existing = state.cart.find(
     (entry) => entry.productId === productId && entry.optionName === optionName
   );
@@ -1222,7 +1355,11 @@ function bindEvents() {
   $('#quantity-close')?.addEventListener('click', () => $('#quantity-dialog').close());
   $('#quantity-confirm')?.addEventListener('click', () => {
     if (!state.pendingItem) return;
-    addToCart(state.pendingItem.item.id, Math.max(1, Number($('#quantity-input').value) || 1));
+    addToCart(
+      state.pendingItem.item.id,
+      state.pendingItem.optionName,
+      Math.max(1, Number($('#quantity-input').value) || 1)
+    );
     state.pendingItem = null;
     $('#quantity-dialog').close();
   });

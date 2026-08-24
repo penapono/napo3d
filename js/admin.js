@@ -42,13 +42,78 @@ function setStatus(selector, message, tone = '') {
   node.dataset.tone = tone;
 }
 
+function optionDraft(option = {}) {
+  return {
+    model: option.model || (option.name && option.name !== 'Única' ? option.name : ''),
+    size: option.size || '',
+    weight: option.weight || '',
+    productionTime: option.productionTime || '',
+    colors: option.colors || '',
+    score: Number.isFinite(Number(option.score)) ? Number(option.score) : '',
+    url: option.url || '',
+    imageUrl: option.imageUrl || '',
+  };
+}
+
+function renderProductOptionRows(options = [{}]) {
+  const node = $('#admin-product-options');
+  if (!node) return;
+  const drafts = (options.length ? options : [{}]).map(optionDraft);
+  node.innerHTML = drafts
+    .map(
+      (option, index) => `<article class="admin-option-row" data-option-row>
+        <div class="form-row">
+          <label>Modelo / versão<input data-option-field="model" value="${text(option.model)}" /></label>
+          <label>Tamanho / subtipo<input data-option-field="size" value="${text(option.size)}" placeholder="Ex.: 200 mm, versão compacta" /></label>
+        </div>
+        <div class="form-row">
+          <label>Peso (g)<input data-option-field="weight" type="number" min="1" step="1" value="${text(option.weight)}" /></label>
+          <label>Tempo de produção (min)<input data-option-field="productionTime" type="number" min="1" step="1" value="${text(option.productionTime)}" /></label>
+        </div>
+        <div class="form-row">
+          <label>Cor(es)<input data-option-field="colors" value="${text(option.colors)}" /></label>
+          <label>Pontuação<input data-option-field="score" type="number" step="1" value="${text(option.score)}" /></label>
+        </div>
+        <div class="form-row">
+          <label>URL do MakerWorld<input data-option-field="url" value="${text(option.url)}" /></label>
+          <label>URL da imagem<input data-option-field="imageUrl" value="${text(option.imageUrl)}" /></label>
+        </div>
+        <div class="inline-actions">
+          <button class="button button-danger" data-option-remove="${index}" type="button">Remover modelo</button>
+        </div>
+      </article>`
+    )
+    .join('');
+  node.querySelectorAll('[data-option-remove]').forEach((button) => {
+    button.disabled = drafts.length === 1;
+  });
+}
+
+function readProductOptions() {
+  return [...document.querySelectorAll('[data-option-row]')].map((row) => {
+    const read = (field) =>
+      String(row.querySelector(`[data-option-field="${field}"]`)?.value || '').trim();
+    return {
+      model: read('model'),
+      size: read('size'),
+      weight: read('weight'),
+      productionTime: read('productionTime'),
+      colors: read('colors'),
+      score: read('score'),
+      url: read('url'),
+      imageUrl: read('imageUrl'),
+    };
+  });
+}
+
 function formatDate(value) {
   return new Date(value).toLocaleString('pt-BR');
 }
 
 function makerWorldOptionCount(product) {
-  const option = primaryProductOption(product);
-  return /https?:\/\/(?:www\.)?makerworld\.com\//i.test(option?.url || '') ? 1 : 0;
+  return (Array.isArray(product?.options) ? product.options : []).filter((option) =>
+    /https?:\/\/(?:www\.)?makerworld\.com\//i.test(option?.url || '')
+  ).length;
 }
 
 function makerWorldRefreshSummary(product) {
@@ -169,24 +234,19 @@ function openProductDialog(product = null) {
   $('#admin-product-dialog-title').textContent = product ? product.name : 'Cadastrar produto';
   const form = $('#admin-product-form');
   form.reset();
-  const option = primaryProductOption(product) || {};
   form.elements.namedItem('name').value = product?.name || '';
   form.elements.namedItem('category').value = product?.category || '';
   form.elements.namedItem('summary').value = product?.summary || '';
   form.elements.namedItem('description').value = product?.description || '';
-  form.elements.namedItem('weight').value = option.weight || '';
-  form.elements.namedItem('productionTime').value =
-    option.productionTime || product?.productionTime || '';
-  form.elements.namedItem('colors').value = option.colors || '';
-  form.elements.namedItem('score').value = option.score || '';
-  form.elements.namedItem('url').value = option.url || '';
-  form.elements.namedItem('imageUrl').value = option.imageUrl || '';
+  form.elements.namedItem('productionTime').value = product?.productionTime || '';
+  renderProductOptionRows(product?.options || [{}]);
   setStatus('#admin-product-status', '');
   $('#admin-product-dialog').showModal();
 }
 
 function productRow(product) {
   const option = primaryProductOption(product);
+  const optionCount = Array.isArray(product?.options) ? product.options.length : 0;
   const makerWorldCount = makerWorldOptionCount(product);
   const refresh = product.makerworldRefresh;
   const refreshSummary = makerWorldRefreshSummary(product);
@@ -208,7 +268,7 @@ function productRow(product) {
   return `<article class="admin-list-row">
     <div class="admin-list-row-info">
       <strong>${text(product.name)}</strong>
-      <span>${text(product.category || 'Sem categoria')} · ${Number(option?.weight || 0)} g${rating ? ` · ${text(`${rating}${ratingCount}`)}` : ''}${text(makerWorldId)}</span>
+      <span>${text(product.category || 'Sem categoria')} · ${optionCount || 0} modelo(s)${Number(option?.weight || 0) > 0 ? ` · ${Number(option.weight)} g` : ''}${rating ? ` · ${text(`${rating}${ratingCount}`)}` : ''}${text(makerWorldId)}</span>
       ${refreshSummary ? `<span class="admin-refresh-note" data-tone="${text(refreshTone)}">${text(refreshSummary)}</span>` : ''}
       ${manualSummary ? `<span class="admin-refresh-note" data-tone="${text(manualTone)}">${text(manualSummary)}</span>` : ''}
       ${enrichmentSummary ? `<span class="admin-refresh-note" data-tone="${text(enrichmentTone)}">${text(enrichmentSummary)}</span>` : ''}
@@ -281,6 +341,19 @@ async function loadProducts() {
 
 function bindProductEvents() {
   $('#admin-product-new')?.addEventListener('click', () => openProductDialog());
+  $('#admin-option-add')?.addEventListener('click', () => {
+    const options = readProductOptions();
+    options.push({});
+    renderProductOptionRows(options);
+  });
+  $('#admin-product-options')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-option-remove]');
+    if (!button) return;
+    const index = Number(button.dataset.optionRemove);
+    const options = readProductOptions();
+    options.splice(index, 1);
+    renderProductOptionRows(options.length ? options : [{}]);
+  });
   $('#admin-product-dialog-close')?.addEventListener('click', () =>
     $('#admin-product-dialog').close()
   );
@@ -288,47 +361,48 @@ function bindProductEvents() {
     event.preventDefault();
     const form = event.currentTarget;
     const existingProduct = state.products.find((product) => product.id === state.editingProductId);
-    const existingOption = primaryProductOption(existingProduct) || {};
-    const submittedUrl = form.elements.namedItem('url').value.trim();
+    const options = readProductOptions();
+    const meaningfulOptions = options.filter((option) =>
+      Object.values(option).some((value) => String(value || '').trim())
+    );
+    const firstOption = meaningfulOptions[0] || {};
+    const submittedUrl = String(firstOption.url || '').trim();
+    const hasManualOptionData = meaningfulOptions.some((option) =>
+      ['model', 'size', 'weight', 'productionTime', 'colors', 'score', 'imageUrl'].some((field) =>
+        String(option[field] || '').trim()
+      )
+    );
     const urlOnlyCreate =
       !state.editingProductId &&
       submittedUrl &&
-      ![
-        'name',
-        'category',
-        'summary',
-        'description',
-        'weight',
-        'productionTime',
-        'colors',
-        'score',
-        'imageUrl',
-      ].some((fieldName) => String(form.elements.namedItem(fieldName).value || '').trim());
-    const optionName = form.elements.namedItem('name').value.trim();
+      !hasManualOptionData &&
+      !['name', 'category', 'summary', 'description', 'productionTime'].some((fieldName) =>
+        String(form.elements.namedItem(fieldName).value || '').trim()
+      );
     const payload = urlOnlyCreate
       ? { options: [{ url: submittedUrl }] }
       : {
-          name: optionName,
+          name:
+            form.elements.namedItem('name').value.trim() ||
+            String(firstOption.model || '').trim() ||
+            existingProduct?.name ||
+            '',
           category: form.elements.namedItem('category').value.trim(),
           summary: form.elements.namedItem('summary').value.trim(),
           description: form.elements.namedItem('description').value.trim(),
           productionTime: form.elements.namedItem('productionTime').value
             ? Number(form.elements.namedItem('productionTime').value)
             : undefined,
-          options: [
-            {
-              ...existingOption,
-              name: optionName,
-              weight: Number(form.elements.namedItem('weight').value),
-              productionTime: form.elements.namedItem('productionTime').value
-                ? Number(form.elements.namedItem('productionTime').value)
-                : undefined,
-              colors: form.elements.namedItem('colors').value.trim(),
-              score: Number(form.elements.namedItem('score').value) || 0,
-              url: submittedUrl,
-              imageUrl: form.elements.namedItem('imageUrl').value.trim(),
-            },
-          ],
+          options: meaningfulOptions.map((option) => ({
+            model: option.model || undefined,
+            size: option.size || undefined,
+            weight: Number(option.weight),
+            productionTime: option.productionTime ? Number(option.productionTime) : undefined,
+            colors: option.colors || undefined,
+            score: Number(option.score) || 0,
+            url: option.url || undefined,
+            imageUrl: option.imageUrl || undefined,
+          })),
         };
     setStatus(
       '#admin-product-status',
