@@ -936,7 +936,14 @@ export function createApp(options = {}) {
 
   async function buildOrderQuote(items) {
     const catalog = await loadCatalog();
-    const productsById = new Map(catalog.map((item) => [item.id, item]));
+    const productsById = new Map();
+    for (const item of catalog) {
+      const aliases = [item.id, ...(Array.isArray(item.sourceProductIds) ? item.sourceProductIds : [])];
+      for (const alias of aliases) {
+        const normalized = String(alias || '').trim();
+        if (normalized && !productsById.has(normalized)) productsById.set(normalized, item);
+      }
+    }
     return buildQuote(items, (productId) => productsById.get(productId));
   }
 

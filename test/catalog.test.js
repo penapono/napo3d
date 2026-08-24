@@ -88,3 +88,22 @@ test('groupCatalogProducts exposes grouped models and sizes under one public pro
   assert.equal(tag.options[0].model, 'Corporativo');
   assert.equal(tag.options[0].size, '25 mm');
 });
+
+test('groupCatalogProducts preserves legacy source aliases after raw-record consolidation', () => {
+  const [product] = groupCatalogProducts([
+    {
+      id: 'plane',
+      name: 'Miniatura Boeing 737',
+      manualCuration: {
+        legacySourceProductIds: ['plane', 'plane--multicolor', 'plane--print-in-place'],
+      },
+      options: [{ model: 'Escala 1:200', weight: 40 }],
+    },
+  ]);
+
+  assert.deepEqual(product.sourceProductIds, [
+    'plane',
+    'plane--multicolor',
+    'plane--print-in-place',
+  ]);
+});

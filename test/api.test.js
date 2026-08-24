@@ -558,6 +558,10 @@ test('public catalog keeps multiple models and sizes under one product family', 
           size: '25 mm',
           weight: 7,
           imageUrl: 'https://example.com/nfc-25.webp',
+          imageGallery: [
+            'https://example.com/nfc-25.webp',
+            'https://example.com/nfc-25-side.webp',
+          ],
         },
         {
           model: 'Corporativo',
@@ -583,6 +587,10 @@ test('public catalog keeps multiple models and sizes under one product family', 
     family.options.map((option) => option.name),
     ['Corporativo · 25 mm', 'Corporativo · 35 mm', 'Compacto']
   );
+  assert.deepEqual(family.options[0].imageGallery, [
+    'https://example.com/nfc-25.webp',
+    'https://example.com/nfc-25-side.webp',
+  ]);
 
   const quote = buildQuote(
     [{ productId: family.id, optionName: 'Corporativo · 35 mm', quantity: 12 }],

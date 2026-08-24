@@ -52,6 +52,9 @@ function optionDraft(option = {}) {
     score: Number.isFinite(Number(option.score)) ? Number(option.score) : '',
     url: option.url || '',
     imageUrl: option.imageUrl || '',
+    imageGallery: Array.isArray(option.imageGallery)
+      ? option.imageGallery.filter(Boolean).join('\n')
+      : '',
   };
 }
 
@@ -62,6 +65,12 @@ function renderProductOptionRows(options = [{}]) {
   node.innerHTML = drafts
     .map(
       (option, index) => `<article class="admin-option-row" data-option-row>
+        <div class="admin-option-header">
+          <div>
+            <strong>Variação ${index + 1}</strong>
+            <span>Defina tamanho, peso, tempo e imagens próprias desta variação.</span>
+          </div>
+        </div>
         <div class="form-row">
           <label>Modelo / versão<input data-option-field="model" value="${text(option.model)}" /></label>
           <label>Tamanho / subtipo<input data-option-field="size" value="${text(option.size)}" placeholder="Ex.: 200 mm, versão compacta" /></label>
@@ -78,8 +87,9 @@ function renderProductOptionRows(options = [{}]) {
           <label>URL do MakerWorld<input data-option-field="url" value="${text(option.url)}" /></label>
           <label>URL da imagem<input data-option-field="imageUrl" value="${text(option.imageUrl)}" /></label>
         </div>
+        <label>Galeria da variação (uma URL por linha)<textarea data-option-field="imageGallery" rows="4" placeholder="https://...\nhttps://...">${text(option.imageGallery)}</textarea></label>
         <div class="inline-actions">
-          <button class="button button-danger" data-option-remove="${index}" type="button">Remover modelo</button>
+          <button class="button button-danger" data-option-remove="${index}" type="button">Remover variação</button>
         </div>
       </article>`
     )
@@ -102,6 +112,7 @@ function readProductOptions() {
       score: read('score'),
       url: read('url'),
       imageUrl: read('imageUrl'),
+      imageGallery: read('imageGallery'),
     };
   });
 }
@@ -268,7 +279,7 @@ function productRow(product) {
   return `<article class="admin-list-row">
     <div class="admin-list-row-info">
       <strong>${text(product.name)}</strong>
-      <span>${text(product.category || 'Sem categoria')} · ${optionCount || 0} modelo(s)${Number(option?.weight || 0) > 0 ? ` · ${Number(option.weight)} g` : ''}${rating ? ` · ${text(`${rating}${ratingCount}`)}` : ''}${text(makerWorldId)}</span>
+      <span>${text(product.category || 'Sem categoria')} · ${optionCount || 0} variação(ões)${Number(option?.weight || 0) > 0 ? ` · ${Number(option.weight)} g` : ''}${rating ? ` · ${text(`${rating}${ratingCount}`)}` : ''}${text(makerWorldId)}</span>
       ${refreshSummary ? `<span class="admin-refresh-note" data-tone="${text(refreshTone)}">${text(refreshSummary)}</span>` : ''}
       ${manualSummary ? `<span class="admin-refresh-note" data-tone="${text(manualTone)}">${text(manualSummary)}</span>` : ''}
       ${enrichmentSummary ? `<span class="admin-refresh-note" data-tone="${text(enrichmentTone)}">${text(enrichmentSummary)}</span>` : ''}
@@ -343,7 +354,19 @@ function bindProductEvents() {
   $('#admin-product-new')?.addEventListener('click', () => openProductDialog());
   $('#admin-option-add')?.addEventListener('click', () => {
     const options = readProductOptions();
-    options.push({});
+    const lastOption = options[options.length - 1];
+    options.push(
+      lastOption
+        ? {
+            ...lastOption,
+            size: '',
+            weight: '',
+            productionTime: '',
+            imageUrl: '',
+            imageGallery: '',
+          }
+        : {}
+    );
     renderProductOptionRows(options);
   });
   $('#admin-product-options')?.addEventListener('click', (event) => {
@@ -368,8 +391,8 @@ function bindProductEvents() {
     const firstOption = meaningfulOptions[0] || {};
     const submittedUrl = String(firstOption.url || '').trim();
     const hasManualOptionData = meaningfulOptions.some((option) =>
-      ['model', 'size', 'weight', 'productionTime', 'colors', 'score', 'imageUrl'].some((field) =>
-        String(option[field] || '').trim()
+      ['model', 'size', 'weight', 'productionTime', 'colors', 'score', 'imageUrl', 'imageGallery'].some(
+        (field) => String(option[field] || '').trim()
       )
     );
     const urlOnlyCreate =
@@ -402,6 +425,12 @@ function bindProductEvents() {
             score: Number(option.score) || 0,
             url: option.url || undefined,
             imageUrl: option.imageUrl || undefined,
+            imageGallery: option.imageGallery
+              ? option.imageGallery
+                  .split('\n')
+                  .map((value) => value.trim())
+                  .filter(Boolean)
+              : undefined,
           })),
         };
     setStatus(

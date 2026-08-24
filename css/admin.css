@@ -111,6 +111,10 @@
   margin: 0;
 }
 
+.admin-options-help {
+  margin: 0 0 12px;
+}
+
 .admin-option-row {
   background: var(--paper);
   border: 1px solid var(--line);
@@ -119,6 +123,23 @@
   gap: 10px;
   margin-bottom: 12px;
   padding: 14px;
+}
+
+.admin-option-header {
+  align-items: start;
+  display: flex;
+  justify-content: space-between;
+}
+
+.admin-option-header strong {
+  display: block;
+}
+
+.admin-option-header span {
+  color: var(--muted);
+  display: block;
+  font-size: 13px;
+  margin-top: 4px;
 }
 
 .admin-dialog {

@@ -491,7 +491,13 @@ function image(url, alt, fallbackUrl = '') {
 }
 
 function findProduct(productId) {
-  return state.items.find((item) => item.id === productId) || null;
+  return (
+    state.items.find(
+      (item) =>
+        item.id === productId ||
+        (Array.isArray(item.sourceProductIds) && item.sourceProductIds.includes(productId))
+    ) || null
+  );
 }
 
 async function loadProductDetail(productId) {
@@ -522,11 +528,14 @@ async function loadProductDetail(productId) {
 
 function cartLine(entry) {
   const item = findProduct(entry.productId);
+  if (!item) return null;
+  if (entry.productId !== item.id) entry.productId = item.id;
   const option =
     productOptions(item).find(
       (candidate) => optionIdentity(item, candidate) === entry.optionName
     ) || primaryProductOption(item);
-  if (!item || !option) return null;
+  if (!option) return null;
+  entry.optionName = optionIdentity(item, option);
   const unitPrice =
     unitPriceFromWeight(weightInGrams(option), entry.quantity, productHasMaglev(item)) || 0;
   return {

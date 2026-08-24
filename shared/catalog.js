@@ -156,7 +156,7 @@ function buildCatalogFamily(products = []) {
       numberOrUndefined(representative.productionTime) ??
       numberOrUndefined(primaryProductOption({ options })?.productionTime),
     options,
-    sourceProductIds: members.map((product) => product.id).filter(Boolean),
+    sourceProductIds: collectSourceProductIds(members),
     grouped: members.length > 1 || options.length > 1,
     createdAt,
     updatedAt,
@@ -231,6 +231,22 @@ function dedupeOptionNames(options = []) {
       name: `${key} (${count})`,
     };
   });
+}
+
+function collectSourceProductIds(products = []) {
+  const ids = new Set();
+  for (const product of products) {
+    const id = String(product?.id || '').trim();
+    if (id) ids.add(id);
+    const aliases = Array.isArray(product?.manualCuration?.legacySourceProductIds)
+      ? product.manualCuration.legacySourceProductIds
+      : [];
+    for (const alias of aliases) {
+      const normalized = String(alias || '').trim();
+      if (normalized) ids.add(normalized);
+    }
+  }
+  return [...ids];
 }
 
 function commonNamePrefix(values = []) {
