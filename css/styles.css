@@ -98,8 +98,10 @@ a {
 .catalog-controls {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   justify-content: space-between;
+  min-width: 0;
 }
 .search-box,
 .sort-box {
@@ -402,6 +404,8 @@ a {
   font:
     600 12px 'DM Sans',
     sans-serif;
+  max-width: 100%;
+  min-width: 0;
   padding: 10px 12px;
 }
 .catalog-grid {
@@ -493,6 +497,18 @@ a {
 .cart-panel > .quote-button {
   display: flex;
   margin-left: auto;
+}
+.cart-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+.cart-actions .button,
+.cart-actions .quote-button {
+  margin-left: 0;
+  margin-top: 0;
 }
 .cart-controls {
   justify-content: flex-end;
@@ -987,6 +1003,9 @@ a {
 .page-cart-summary button {
   margin-left: auto;
 }
+.page-cart-status {
+  margin-top: 12px;
+}
 .account-page-form,
 .shipping-form {
   display: grid;
@@ -1077,6 +1096,7 @@ a {
 .pagination {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: center;
   margin: 36px 0 8px;
@@ -1096,10 +1116,10 @@ a {
   justify-content: center;
   min-width: 40px;
   padding: 0 13px;
+  white-space: nowrap;
 }
-.page-button-icon {
-  padding: 0;
-  width: 40px;
+.page-button-label {
+  padding: 0 16px;
 }
 .page-button:hover:not(:disabled),
 .page-button.active {
@@ -1361,6 +1381,23 @@ a {
   .shipping-layout {
     grid-template-columns: 1fr;
   }
+  .page-cart-item,
+  .page-cart-summary,
+  .product-detail-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .cart-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .cart-actions .button,
+  .cart-actions .quote-button,
+  .page-cart-summary button,
+  .product-detail-actions .button {
+    margin-left: 0;
+    width: 100%;
+  }
   .checkout-review {
     position: static;
   }
@@ -1461,11 +1498,21 @@ a {
     overflow: visible;
   }
   .catalog-controls {
+    grid-template-columns: 1fr;
     gap: 12px;
+  }
+  .catalog-controls > * {
+    min-width: 0;
+  }
+  .search-box,
+  .search-box.is-open,
+  .sort-box,
+  .sort-box select {
+    max-width: 100%;
+    width: 100%;
   }
   .search-box.is-open {
     padding-right: 12px;
-    width: min(100%, 220px);
   }
   .pill {
     font-size: 11px;
@@ -1473,9 +1520,10 @@ a {
   }
   .sort-box {
     gap: 6px;
+    margin-left: 0;
   }
   .sort-box select {
-    max-width: 170px;
+    max-width: 100%;
   }
   .catalog-grid {
     gap: 14px;
@@ -1495,7 +1543,16 @@ a {
     white-space: nowrap;
   }
   .pagination {
+    gap: 6px;
     margin-top: 28px;
+  }
+  .page-button {
+    font-size: 13px;
+    min-width: 36px;
+    padding: 0 11px;
+  }
+  .page-button-label {
+    padding: 0 14px;
   }
   .seo-section {
     padding: 60px 0;

@@ -626,6 +626,32 @@ async function refreshCatalog() {
   state.page = requestedPage;
 }
 
+function visiblePaginationPages(totalPages, currentPageNumber) {
+  if (totalPages <= 0) return [];
+  const start = Math.max(1, currentPageNumber - 1);
+  const end = Math.min(totalPages, currentPageNumber + 1);
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
+async function goToCatalogPage(target) {
+  const nextPage =
+    target === 'first'
+      ? 1
+      : target === 'prev'
+        ? Math.max(1, state.page - 1)
+        : target === 'next'
+          ? Math.min(state.totalPages, state.page + 1)
+          : target === 'last'
+            ? state.totalPages
+            : Math.min(state.totalPages, Math.max(1, Number(target) || state.page));
+  if (nextPage === state.page) return;
+  state.page = nextPage;
+  await refreshCatalog();
+  renderCategories();
+  renderCatalog();
+  $('#catalogo')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function renderPagination() {
   const pagination = $('#pagination');
   if (!pagination) return;
@@ -633,18 +659,13 @@ function renderPagination() {
     pagination.innerHTML = '';
     return;
   }
-  pagination.innerHTML = `<button class="page-button page-button-icon" type="button" data-page="prev" aria-label="Página anterior" ${state.page === 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>${Array.from({ length: state.totalPages }, (_, index) => `<button class="page-button${state.page === index + 1 ? ' active' : ''}" type="button" data-page="${index + 1}">${index + 1}</button>`).join('')}<button class="page-button page-button-icon" type="button" data-page="next" aria-label="Próxima página" ${state.page === state.totalPages ? 'disabled' : ''}><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`;
-  pagination.querySelectorAll('.page-button').forEach((button) =>
-    button.addEventListener('click', async () => {
-      const target = button.dataset.page;
-      state.page =
-        target === 'prev' ? state.page - 1 : target === 'next' ? state.page + 1 : Number(target);
-      await refreshCatalog();
-      renderCategories();
-      renderCatalog();
-      $('#catalogo')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    })
-  );
+  const pages = visiblePaginationPages(state.totalPages, state.page);
+  pagination.innerHTML = `<button class="page-button page-button-label" type="button" data-page="first" aria-label="Primeira página" ${state.page === 1 ? 'disabled' : ''}>Primeira</button><button class="page-button page-button-label" type="button" data-page="prev" aria-label="Página anterior" ${state.page === 1 ? 'disabled' : ''}>Anterior</button>${pages.map((pageNumber) => `<button class="page-button${state.page === pageNumber ? ' active' : ''}" type="button" data-page="${pageNumber}" ${state.page === pageNumber ? 'aria-current="page"' : ''}>${pageNumber}</button>`).join('')}<button class="page-button page-button-label" type="button" data-page="next" aria-label="Próxima página" ${state.page === state.totalPages ? 'disabled' : ''}>Próxima</button><button class="page-button page-button-label" type="button" data-page="last" aria-label="Última página" ${state.page === state.totalPages ? 'disabled' : ''}>Última</button>`;
+  pagination
+    .querySelectorAll('.page-button')
+    .forEach((button) =>
+      button.addEventListener('click', () => goToCatalogPage(button.dataset.page))
+    );
 }
 
 function renderCatalog() {
@@ -838,6 +859,8 @@ function renderCart() {
   $('#page-cart-total') && ($('#page-cart-total').textContent = money(summary.subtotal));
   $('#page-production-total') &&
     ($('#page-production-total').textContent = formatDuration(summary.productionMinutes));
+  if ($('#cart-clear')) $('#cart-clear').disabled = !summary.lines.length;
+  if ($('#page-cart-clear')) $('#page-cart-clear').disabled = !summary.lines.length;
 }
 
 function openQuantityDialog(productId, optionName = '') {
@@ -943,6 +966,7 @@ function addToCart(productId, optionName, quantity) {
   );
   if (existing) existing.quantity += quantity;
   else state.cart.push({ productId, optionName, quantity });
+  setStatus('#page-cart-status', '');
   renderCart();
   $('#cart-panel')?.classList.add('open');
 }
@@ -953,8 +977,27 @@ function updateCart(index, action) {
   if (action === 'increase') entry.quantity += 1;
   if (action === 'decrease') entry.quantity = Math.max(1, entry.quantity - 1);
   if (action === 'remove') state.cart.splice(index, 1);
+  setStatus('#form-status', '');
+  setStatus('#page-cart-status', '');
   renderCart();
   if (currentPage() === 'shipping') refreshQuote().catch(console.error);
+}
+
+function clearCart() {
+  if (!state.cart.length) {
+    setStatus('#form-status', 'Seu carrinho já está vazio.');
+    setStatus('#page-cart-status', 'Seu carrinho já está vazio.');
+    return;
+  }
+  state.cart = [];
+  state.quote = null;
+  state.pendingItem = null;
+  renderCart();
+  renderQuote();
+  setStatus('#form-status', 'Carrinho esvaziado.');
+  setStatus('#page-cart-status', 'Carrinho esvaziado.');
+  setStatus('#shipping-quote-status', '');
+  setStatus('#shipping-order-status', '');
 }
 
 function renderHeader() {
@@ -1012,7 +1055,7 @@ function renderCategories() {
 }
 
 function renderOrders() {
-  const container = $('#account-orders');
+  const container = $('#orders-list') || $('#account-orders');
   if (!container) return;
   container.innerHTML = state.orders.length
     ? state.orders
@@ -1328,11 +1371,13 @@ function bindEvents() {
   $('#cart-open')?.addEventListener('click', () => redirect('cart'));
   $('#account-open')?.addEventListener('click', () => redirect('account'));
   $('#cart-close')?.addEventListener('click', () => $('#cart-panel').classList.remove('open'));
+  $('#cart-clear')?.addEventListener('click', clearCart);
   $('#cart-items')?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-cart-action]');
     if (!button) return;
     updateCart(Number(button.dataset.cartIndex), button.dataset.cartAction);
   });
+  $('#page-cart-clear')?.addEventListener('click', clearCart);
   $('#page-cart-items')?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-page-cart]');
     if (!button) return;

@@ -236,7 +236,14 @@
             <div class="production-estimate">
               Produção + tempo de envio<strong id="production-total">0 horas</strong>
             </div>
-            <button class="quote-button" id="checkout-start" type="button">Concluir compra</button>
+            <div class="cart-actions">
+              <button class="button button-secondary" id="cart-clear" type="button">
+                Esvaziar carrinho
+              </button>
+              <button class="quote-button" id="checkout-start" type="button">
+                Concluir compra
+              </button>
+            </div>
             <p class="form-status" id="form-status" role="status"></p>
           </aside>
           <p class="empty-state" id="empty-state" hidden>
@@ -400,10 +407,14 @@
           <div>
             <span>Produção + tempo de envio</span><strong id="page-production-total">0m</strong>
           </div>
+          <button class="button button-secondary" id="page-cart-clear" type="button">
+            Esvaziar carrinho
+          </button>
           <button class="button button-primary" id="page-checkout-start" type="button">
             Concluir compra
           </button>
         </div>
+        <p class="form-status" id="page-cart-status" role="status"></p>
       </div>
     </section>
 
@@ -458,7 +469,7 @@
           <div class="section-heading">
             <h2>Pedidos</h2>
           </div>
-          <div class="info-list" id="account-orders"></div>
+          <div class="info-list" id="orders-list"></div>
         </section>
       </div>
     </section>
