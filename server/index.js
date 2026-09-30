@@ -15,7 +15,12 @@ import {
   validateAddressInput,
   validateProductInput,
 } from '../shared/contract.js';
-import { buildCategoryCounts, groupCatalogProducts } from '../shared/catalog.js';
+import {
+  buildCategoryCounts,
+  groupCatalogProducts,
+  productCategories,
+  productHasCategory,
+} from '../shared/catalog.js';
 import { processPendingEmails, resolveMailerConfig } from './mailer.js';
 import {
   collectProductImageUrls,
@@ -212,14 +217,15 @@ export function createApp(options = {}) {
 
   function availableCatalogCategories(products, currentProduct = null) {
     const counts = buildCategoryCounts(
-      products.filter((product) => product.id !== currentProduct?.id || product.category)
+      products.filter(
+        (product) => product.id !== currentProduct?.id || productCategories(product).length
+      )
     );
     const names = counts.map((entry) => entry.name);
-    const currentCategory = String(currentProduct?.category || '').trim();
-    if (currentCategory && !names.includes(currentCategory)) {
-      names.push(currentCategory);
-      names.sort((left, right) => left.localeCompare(right, 'pt-BR'));
+    for (const currentCategory of productCategories(currentProduct || {})) {
+      if (!names.includes(currentCategory)) names.push(currentCategory);
     }
+    names.sort((left, right) => left.localeCompare(right, 'pt-BR'));
     return names;
   }
 
@@ -475,6 +481,7 @@ export function createApp(options = {}) {
     return ![
       body.name,
       body.category,
+      ...(Array.isArray(body.categories) ? body.categories : []),
       body.page,
       body.summary,
       body.productionTime,
@@ -938,7 +945,10 @@ export function createApp(options = {}) {
     const catalog = await loadCatalog();
     const productsById = new Map();
     for (const item of catalog) {
-      const aliases = [item.id, ...(Array.isArray(item.sourceProductIds) ? item.sourceProductIds : [])];
+      const aliases = [
+        item.id,
+        ...(Array.isArray(item.sourceProductIds) ? item.sourceProductIds : []),
+      ];
       for (const alias of aliases) {
         const normalized = String(alias || '').trim();
         if (normalized && !productsById.has(normalized)) productsById.set(normalized, item);
@@ -999,10 +1009,11 @@ export function createApp(options = {}) {
 
       const filtered = sortProducts(
         catalog.filter((product) => {
-          if (category && category !== 'all' && product.category !== category) return false;
+          if (category && category !== 'all' && !productHasCategory(product, category))
+            return false;
           if (!query) return true;
           const haystack =
-            `${product.name} ${product.category} ${product.summary || ''} ${product.description || ''} ${(product.keywords || []).join(' ')} ${(product.options || []).map((option) => `${option.name} ${option.colors || ''}`).join(' ')}`.toLowerCase();
+            `${product.name} ${productCategories(product).join(' ')} ${product.summary || ''} ${product.description || ''} ${(product.keywords || []).join(' ')} ${(product.options || []).map((option) => `${option.name} ${option.colors || ''}`).join(' ')}`.toLowerCase();
           return haystack.includes(query);
         }),
         sort
@@ -1079,7 +1090,7 @@ export function createApp(options = {}) {
       };
       await store.createProduct(product);
       invalidateCatalogCache();
-      if (!product.summary && !product.description && !product.category) {
+      if (!product.summary && !product.description && !productCategories(product).length) {
         maybeStartAiEnrichment(product.id, product);
       }
       writeJson(response, 201, { product });

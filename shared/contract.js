@@ -1,4 +1,4 @@
-import { primaryProductOption } from './catalog.js';
+import { primaryProductOption, productCategories } from './catalog.js';
 
 export const PRICE_TIERS = [
   { label: 'Até 50 un.', maxQuantity: 50, rate: 375 },
@@ -212,11 +212,13 @@ export function validateProductInput(product = {}) {
       };
     }
   }
+  const categories = productCategories(product);
   return {
     ok: true,
     product: {
       name,
-      category: normalizeOptionalText(product.category) || '',
+      category: categories[0] || '',
+      categories,
       maglev: Boolean(product.maglev),
       reference: normalizeOptionalText(product.reference) || '',
       summary: normalizeOptionalText(product.summary) || '',

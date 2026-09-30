@@ -4,7 +4,12 @@ import {
   sortProducts,
   validateAddressInput,
 } from '../shared/contract.js';
-import { buildCategoryCounts, groupCatalogProducts } from '../shared/catalog.js';
+import {
+  buildCategoryCounts,
+  groupCatalogProducts,
+  productCategories,
+  productHasCategory,
+} from '../shared/catalog.js';
 
 const DB_KEY = 'napo3d-mock-db';
 
@@ -84,11 +89,11 @@ export function createMockBackend({ getToken, loadCatalog }) {
       const limit = Math.min(48, Math.max(1, Number(params.limit) || 12));
       const filtered = sortProducts(
         products.filter((item) => {
-          if (category && category !== 'all' && item.category !== category) return false;
+          if (category && category !== 'all' && !productHasCategory(item, category)) return false;
           const option = item.options?.[0];
           if (!query) return true;
           const haystack =
-            `${item.name} ${item.category} ${item.summary || ''} ${item.description || ''} ${(item.keywords || []).join(' ')} ${option?.name || ''} ${option?.colors || ''}`.toLowerCase();
+            `${item.name} ${productCategories(item).join(' ')} ${item.summary || ''} ${item.description || ''} ${(item.keywords || []).join(' ')} ${option?.name || ''} ${option?.colors || ''}`.toLowerCase();
           return haystack.includes(query);
         }),
         params.sort || 'recommended'

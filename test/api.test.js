@@ -558,10 +558,7 @@ test('public catalog keeps multiple models and sizes under one product family', 
           size: '25 mm',
           weight: 7,
           imageUrl: 'https://example.com/nfc-25.webp',
-          imageGallery: [
-            'https://example.com/nfc-25.webp',
-            'https://example.com/nfc-25-side.webp',
-          ],
+          imageGallery: ['https://example.com/nfc-25.webp', 'https://example.com/nfc-25-side.webp'],
         },
         {
           model: 'Corporativo',
@@ -1401,4 +1398,44 @@ test('deleting a user cannot target yourself, and preserves the deleted user ord
   const survivingOrder = store.orders.find((entry) => entry.id === order.json.order.id);
   assert.ok(survivingOrder);
   assert.equal(survivingOrder.userId, undefined);
+});
+
+test('a product can belong to several categories and shows up in each filter', async (t) => {
+  const app = await startTestServer();
+  t.after(() => app.close());
+  const admin = await loginAsNewAdmin(app, 'admin-categories@example.com');
+
+  const create = await api(app, '/api/admin/products', {
+    method: 'POST',
+    headers: admin,
+    body: JSON.stringify({
+      name: 'Presépio de Mesa',
+      category: 'Religioso',
+      categories: ['Religioso', 'Natal'],
+      summary: 'Presépio para a mesa de Natal.',
+      options: [{ name: 'Único', weight: 80, score: 4 }],
+    }),
+  });
+  assert.equal(create.response.status, 201);
+  assert.deepEqual(create.json.product.categories, ['Religioso', 'Natal']);
+  const productId = create.json.product.id;
+
+  for (const category of ['Religioso', 'Natal']) {
+    const filtered = await api(app, `/api/products?category=${encodeURIComponent(category)}`);
+    assert.ok(
+      filtered.json.items.some((item) => item.id === productId),
+      category
+    );
+    assert.ok(filtered.json.categories.some((entry) => entry.name === category));
+  }
+
+  const update = await api(app, `/api/admin/products/${productId}`, {
+    method: 'PATCH',
+    headers: admin,
+    body: JSON.stringify({ category: 'Natal', categories: ['Natal'] }),
+  });
+  assert.equal(update.response.status, 200);
+  assert.deepEqual(update.json.product.categories, ['Natal']);
+  const religious = await api(app, `/api/products?category=${encodeURIComponent('Religioso')}`);
+  assert.ok(!religious.json.items.some((item) => item.id === productId));
 });

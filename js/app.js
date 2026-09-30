@@ -6,7 +6,7 @@ import {
   unitPriceFromWeight,
   weightInGrams,
 } from '../shared/contract.js';
-import { primaryProductOption } from '../shared/catalog.js';
+import { primaryProductOption, productCategories } from '../shared/catalog.js';
 import { apiClient } from './api-client.js';
 
 const copy = {
@@ -1038,11 +1038,11 @@ function renderCategories() {
   if (!node) return;
   const categories = state.categories.length
     ? state.categories
-    : [...new Set(state.items.map((item) => item.category).filter(Boolean))]
+    : [...new Set(state.items.flatMap((item) => productCategories(item)))]
         .sort((left, right) => left.localeCompare(right, 'pt-BR'))
         .map((name) => ({
           name,
-          count: state.items.filter((item) => item.category === name).length,
+          count: state.items.filter((item) => productCategories(item).includes(name)).length,
         }));
   node.innerHTML =
     `<button class="pill${state.category === 'all' ? ' active' : ''}" data-category="all">Tudo (${text(state.catalogTotal)})</button>` +

@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildCategoryCounts,
   flattenCatalogProducts,
   groupCatalogProducts,
   primaryProductOption,
+  productCategories,
+  productHasCategory,
 } from '../shared/catalog.js';
+import { validateProductInput } from '../shared/contract.js';
 
 test('flattenCatalogProducts expands a legacy product into standalone products', () => {
   const products = flattenCatalogProducts([
@@ -106,4 +110,53 @@ test('groupCatalogProducts preserves legacy source aliases after raw-record cons
     'plane--multicolor',
     'plane--print-in-place',
   ]);
+});
+
+test('productCategories lists the primary first and drops duplicates', () => {
+  assert.deepEqual(
+    productCategories({ category: 'Religioso', categories: ['natal', 'Natal', 'Religioso', ' '] }),
+    ['Religioso', 'natal']
+  );
+  assert.deepEqual(productCategories({ categories: ['Natal'] }), ['Natal']);
+  assert.deepEqual(productCategories({}), []);
+});
+
+test('buildCategoryCounts counts a product in each of its categories', () => {
+  const counts = buildCategoryCounts([
+    { category: 'Religioso', categories: ['Religioso', 'Natal'] },
+    { category: 'Natal' },
+    { category: 'Casa' },
+    {},
+  ]);
+  assert.deepEqual(counts, [
+    { name: 'Casa', count: 1 },
+    { name: 'Natal', count: 2 },
+    { name: 'Religioso', count: 1 },
+  ]);
+});
+
+test('productHasCategory matches any category case-insensitively', () => {
+  const product = { category: 'Religioso', categories: ['Natal'] };
+  assert.equal(productHasCategory(product, 'natal'), true);
+  assert.equal(productHasCategory(product, 'Casa'), false);
+});
+
+test('groupCatalogProducts merges the categories of family members', () => {
+  const [family] = groupCatalogProducts([
+    { id: 'a', name: 'Anjo', category: 'Religioso', options: [{ name: 'x', weight: 1 }] },
+    { id: 'a--b', name: 'Anjo B', category: 'Natal', options: [{ name: 'y', weight: 1 }] },
+  ]);
+  assert.deepEqual(family.categories, ['Religioso', 'Natal']);
+  assert.equal(family.category, 'Religioso');
+});
+
+test('validateProductInput normalizes category and categories together', () => {
+  const base = { name: 'Presépio', options: [{ name: 'Único', weight: 10 }] };
+  const multi = validateProductInput({ ...base, category: 'Religioso', categories: ['Natal'] });
+  assert.deepEqual(multi.product.categories, ['Religioso', 'Natal']);
+  assert.equal(multi.product.category, 'Religioso');
+  const legacy = validateProductInput({ ...base, category: 'Casa' });
+  assert.deepEqual(legacy.product.categories, ['Casa']);
+  const none = validateProductInput(base);
+  assert.deepEqual([none.product.category, none.product.categories], ['', []]);
 });

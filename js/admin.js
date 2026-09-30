@@ -1,5 +1,5 @@
 import { apiClient, adminClient } from './api-client.js';
-import { primaryProductOption } from '../shared/catalog.js';
+import { primaryProductOption, productCategories } from '../shared/catalog.js';
 
 const $ = (selector) => document.querySelector(selector);
 const money = (value) =>
@@ -8,6 +8,13 @@ const money = (value) =>
     currency: 'BRL',
     minimumFractionDigits: 0,
   });
+// Send primary and full list together: the API merges with the stored product, so a
+// lone `categories` would leave the old primary category in place.
+const categoryFields = (value) => {
+  const categories = productCategories({ categories: String(value || '').split(',') });
+  return { category: categories[0] || '', categories };
+};
+
 const text = (value) =>
   value == null || value === ''
     ? ''
@@ -246,7 +253,7 @@ function openProductDialog(product = null) {
   const form = $('#admin-product-form');
   form.reset();
   form.elements.namedItem('name').value = product?.name || '';
-  form.elements.namedItem('category').value = product?.category || '';
+  form.elements.namedItem('category').value = productCategories(product || {}).join(', ');
   form.elements.namedItem('summary').value = product?.summary || '';
   form.elements.namedItem('description').value = product?.description || '';
   form.elements.namedItem('productionTime').value = product?.productionTime || '';
@@ -279,7 +286,7 @@ function productRow(product) {
   return `<article class="admin-list-row">
     <div class="admin-list-row-info">
       <strong>${text(product.name)}</strong>
-      <span>${text(product.category || 'Sem categoria')} · ${optionCount || 0} variação(ões)${Number(option?.weight || 0) > 0 ? ` · ${Number(option.weight)} g` : ''}${rating ? ` · ${text(`${rating}${ratingCount}`)}` : ''}${text(makerWorldId)}</span>
+      <span>${text(productCategories(product).join(', ') || 'Sem categoria')} · ${optionCount || 0} variação(ões)${Number(option?.weight || 0) > 0 ? ` · ${Number(option.weight)} g` : ''}${rating ? ` · ${text(`${rating}${ratingCount}`)}` : ''}${text(makerWorldId)}</span>
       ${refreshSummary ? `<span class="admin-refresh-note" data-tone="${text(refreshTone)}">${text(refreshSummary)}</span>` : ''}
       ${manualSummary ? `<span class="admin-refresh-note" data-tone="${text(manualTone)}">${text(manualSummary)}</span>` : ''}
       ${enrichmentSummary ? `<span class="admin-refresh-note" data-tone="${text(enrichmentTone)}">${text(enrichmentSummary)}</span>` : ''}
@@ -391,9 +398,16 @@ function bindProductEvents() {
     const firstOption = meaningfulOptions[0] || {};
     const submittedUrl = String(firstOption.url || '').trim();
     const hasManualOptionData = meaningfulOptions.some((option) =>
-      ['model', 'size', 'weight', 'productionTime', 'colors', 'score', 'imageUrl', 'imageGallery'].some(
-        (field) => String(option[field] || '').trim()
-      )
+      [
+        'model',
+        'size',
+        'weight',
+        'productionTime',
+        'colors',
+        'score',
+        'imageUrl',
+        'imageGallery',
+      ].some((field) => String(option[field] || '').trim())
     );
     const urlOnlyCreate =
       !state.editingProductId &&
@@ -410,7 +424,7 @@ function bindProductEvents() {
             String(firstOption.model || '').trim() ||
             existingProduct?.name ||
             '',
-          category: form.elements.namedItem('category').value.trim(),
+          ...categoryFields(form.elements.namedItem('category').value),
           summary: form.elements.namedItem('summary').value.trim(),
           description: form.elements.namedItem('description').value.trim(),
           productionTime: form.elements.namedItem('productionTime').value

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMemoryStore } from '../server/store.js';
+import { productCategories } from '../shared/catalog.js';
 
 function sampleProduct(overrides = {}) {
   return {
@@ -68,4 +69,14 @@ test('seedProductsIfEmpty seeds only when the store is empty', async () => {
   const second = await store.seedProductsIfEmpty([sampleProduct({ id: 'demo-3' })]);
   assert.equal(second.seeded, 0);
   assert.equal((await store.listProducts()).length, 2);
+});
+
+test('updateProduct keeps extra categories and puts a new primary first', async () => {
+  const store = createMemoryStore();
+  await store.createProduct(
+    sampleProduct({ category: 'Religioso', categories: ['Religioso', 'Natal'] })
+  );
+  const updated = await store.updateProduct('demo-product', { category: 'Casa' });
+  assert.equal(updated.category, 'Casa');
+  assert.deepEqual(productCategories(updated), ['Casa', 'Religioso', 'Natal']);
 });

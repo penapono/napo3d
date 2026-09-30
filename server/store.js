@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { productCategories } from '../shared/catalog.js';
 
 export const DEFAULT_DATABASE_URL = 'postgresql://napo3d:napo3d@127.0.0.1:5432/napo3d_development';
 
@@ -130,6 +131,9 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS description text;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS keywords jsonb NOT NULL DEFAULT '[]';
 ALTER TABLE products ADD COLUMN IF NOT EXISTS ai_data jsonb NOT NULL DEFAULT '{}';
 ALTER TABLE products ADD COLUMN IF NOT EXISTS manual_curation jsonb NOT NULL DEFAULT '{}';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS categories jsonb NOT NULL DEFAULT '[]';
+UPDATE products SET categories = jsonb_build_array(category)
+  WHERE category IS NOT NULL AND category <> '' AND categories = '[]'::jsonb;
 `;
 
 export function createMemoryStore(initialState = EMPTY_STORE) {
@@ -298,13 +302,14 @@ export function createPostgresStore(options = {}) {
       return withClient(async (client) => {
         await client.query(
           `INSERT INTO products (
-             id, name, category, maglev, reference, summary, description, keywords, ai_data,
+             id, name, category, categories, maglev, reference, summary, description, keywords, ai_data,
              manual_curation, page, production_time, options, created_at, updated_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, $13::jsonb, $14, $15)`,
+           ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12, $13, $14::jsonb, $15, $16)`,
           [
             product.id,
             product.name,
-            nullIfEmpty(product.category),
+            nullIfEmpty(productCategories(product)[0]),
+            JSON.stringify(productCategories(product)),
             Boolean(product.maglev),
             nullIfEmpty(product.reference),
             nullIfEmpty(product.summary),
@@ -336,22 +341,24 @@ export function createPostgresStore(options = {}) {
           `UPDATE products
              SET name = $2,
                  category = $3,
-                 maglev = $4,
-                 reference = $5,
-                 summary = $6,
-                 description = $7,
-                 keywords = $8::jsonb,
-                 ai_data = $9::jsonb,
-                 manual_curation = $10::jsonb,
-                 page = $11,
-                 production_time = $12,
-                 options = $13::jsonb,
-                 updated_at = $14
+                 categories = $4::jsonb,
+                 maglev = $5,
+                 reference = $6,
+                 summary = $7,
+                 description = $8,
+                 keywords = $9::jsonb,
+                 ai_data = $10::jsonb,
+                 manual_curation = $11::jsonb,
+                 page = $12,
+                 production_time = $13,
+                 options = $14::jsonb,
+                 updated_at = $15
            WHERE id = $1`,
           [
             id,
             next.name,
-            nullIfEmpty(next.category),
+            nullIfEmpty(productCategories(next)[0]),
+            JSON.stringify(productCategories(next)),
             Boolean(next.maglev),
             nullIfEmpty(next.reference),
             nullIfEmpty(next.summary),
@@ -662,7 +669,10 @@ function mapProductRow(row) {
   return {
     id: row.id,
     name: row.name,
-    category: undefinedIfNull(row.category),
+    category: undefinedIfNull(
+      productCategories({ category: row.category, categories: row.categories })[0]
+    ),
+    categories: productCategories({ category: row.category, categories: row.categories }),
     maglev: Boolean(row.maglev),
     reference: undefinedIfNull(row.reference),
     summary: undefinedIfNull(row.summary),
@@ -684,13 +694,14 @@ async function replaceProductsTable(client, products) {
   for (const product of products) {
     await client.query(
       `INSERT INTO products (
-         id, name, category, maglev, reference, summary, description, keywords, ai_data,
+         id, name, category, categories, maglev, reference, summary, description, keywords, ai_data,
          manual_curation, page, production_time, options, created_at, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, $13::jsonb, $14, $15)`,
+       ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12, $13, $14::jsonb, $15, $16)`,
       [
         product.id,
         product.name,
-        nullIfEmpty(product.category),
+        nullIfEmpty(productCategories(product)[0]),
+        JSON.stringify(productCategories(product)),
         Boolean(product.maglev),
         nullIfEmpty(product.reference),
         nullIfEmpty(product.summary),

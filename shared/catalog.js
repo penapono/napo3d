@@ -71,12 +71,38 @@ export function flattenLegacyProduct(product = {}) {
   });
 }
 
+// A product has one primary `category` plus optional extra `categories`. Returns every
+// category name the product belongs to (primary first, duplicates removed).
+export function productCategories(product = {}) {
+  const seen = new Set();
+  const names = [];
+  const candidates = [
+    product?.category,
+    ...(Array.isArray(product?.categories) ? product.categories : []),
+  ];
+  for (const candidate of candidates) {
+    const name = String(candidate ?? '').trim();
+    const key = name.toLocaleLowerCase('pt-BR');
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names;
+}
+
+export function productHasCategory(product = {}, category = '') {
+  const wanted = String(category || '')
+    .trim()
+    .toLocaleLowerCase('pt-BR');
+  return productCategories(product).some((name) => name.toLocaleLowerCase('pt-BR') === wanted);
+}
+
 export function buildCategoryCounts(products = []) {
   const counts = new Map();
   for (const product of products) {
-    const category = String(product?.category || '').trim();
-    if (!category) continue;
-    counts.set(category, (counts.get(category) || 0) + 1);
+    for (const category of productCategories(product)) {
+      counts.set(category, (counts.get(category) || 0) + 1);
+    }
   }
   return [...counts.entries()]
     .sort((left, right) => left[0].localeCompare(right[0], 'pt-BR'))
@@ -138,8 +164,15 @@ function buildCatalogFamily(products = []) {
       .filter(Boolean)
       .sort()[0] || representative.createdAt;
 
+  const categories = productCategories({
+    category: representative.category,
+    categories: members.flatMap(productCategories),
+  });
+
   return {
     ...representative,
+    category: categories[0] || '',
+    categories,
     id: productFamilyKey(representative) || representative.id,
     groupKey: productFamilyKey(representative) || representative.id,
     name: familyName || representative.name,
