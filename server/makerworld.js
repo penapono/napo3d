@@ -101,8 +101,15 @@ export function mergeMakerWorldProductData(product, refreshes) {
     const payload = refresh.payload || {};
     maglev = maglev || payloadRequiresMaglev(payload);
     const bestProfile = payload.best_profile || {};
-    const imageGallery = selectMakerWorldModelImages(payload.image_urls);
-    const imageUrl = firstText(imageGallery[0]) || firstText(option.imageUrl);
+    // Self-hosted copies (/product-images/...) win over remote MakerWorld URLs so a
+    // refresh never swaps them back to hotlinked images.
+    const keepLocalImages = hasLocalProductImages(option);
+    const imageGallery = keepLocalImages
+      ? [...option.imageGallery]
+      : selectMakerWorldModelImages(payload.image_urls);
+    const imageUrl = keepLocalImages
+      ? firstText(option.imageUrl, imageGallery[0])
+      : firstText(imageGallery[0]) || firstText(option.imageUrl);
     const modelName = firstText(payload.name) || firstText(option.name);
     const weightGrams = Number(bestProfile.weight_grams);
     const rating = normalizeRating(bestProfile.rating);
@@ -162,9 +169,50 @@ function toPortugueseMakerWorldUrl(url) {
   return normalized;
 }
 
+export const LOCAL_PRODUCT_IMAGE_PREFIX = '/product-images/';
+
+// Replace remote image URLs on a product's options with self-hosted copies using a
+// `{ remoteUrl: '/product-images/<hash>.webp' }` manifest. Unknown remote URLs are kept
+// and reported so nothing silently breaks.
+export function localizeProductImages(product = {}, manifest = {}) {
+  let replaced = 0;
+  const unmapped = new Set();
+  const swap = (url) => {
+    const value = firstText(url);
+    if (!value || isLocalProductImage(value)) return value;
+    const local = manifest[value];
+    if (local) {
+      replaced += 1;
+      return local;
+    }
+    if (/^https?:/i.test(value)) unmapped.add(value);
+    return value;
+  };
+  const options = (Array.isArray(product.options) ? product.options : []).map((option) => {
+    const next = { ...option };
+    if (option?.imageUrl) next.imageUrl = swap(option.imageUrl);
+    if (option?.thumb) next.thumb = swap(option.thumb);
+    if (Array.isArray(option?.imageGallery)) {
+      next.imageGallery = [...new Set(option.imageGallery.map(swap).filter(Boolean))];
+    }
+    return next;
+  });
+  return { options, replaced, unmapped: [...unmapped] };
+}
+
+export function isLocalProductImage(url) {
+  return firstText(url).startsWith(LOCAL_PRODUCT_IMAGE_PREFIX);
+}
+
+function hasLocalProductImages(option = {}) {
+  const gallery = Array.isArray(option.imageGallery) ? option.imageGallery : [];
+  return gallery.length > 0 && gallery.every(isLocalProductImage);
+}
+
 function selectMakerWorldModelImages(imageUrls) {
   const values = Array.isArray(imageUrls) ? imageUrls : [];
   const filtered = values.map(firstText).filter((url) => {
+    if (isLocalProductImage(url)) return true;
     return (
       url &&
       /makerworld\.bblmw\.com/i.test(url) &&
@@ -177,7 +225,7 @@ function selectMakerWorldModelImages(imageUrls) {
   return filtered
     .filter((url) => {
       try {
-        const parsed = new URL(url);
+        const parsed = new URL(url, 'https://napo3d.shop');
         const key = `${parsed.origin}${parsed.pathname}`;
         if (seen.has(key)) return false;
         seen.add(key);
@@ -195,9 +243,12 @@ function secondsToMinutes(value) {
   return Math.max(1, Math.round(seconds / 60));
 }
 
-function firstText(value) {
-  const text = String(value || '').trim();
-  return text || '';
+function firstText(...values) {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (text) return text;
+  }
+  return '';
 }
 
 function payloadRequiresMaglev(payload = {}) {

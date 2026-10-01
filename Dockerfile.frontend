@@ -9,5 +9,6 @@ COPY js /usr/share/nginx/html/js
 COPY shared /usr/share/nginx/html/shared
 COPY data /usr/share/nginx/html/data
 COPY assets /usr/share/nginx/html/assets
+COPY product-images /usr/share/nginx/html/product-images
 
 EXPOSE 3000
