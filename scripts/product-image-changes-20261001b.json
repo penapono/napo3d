@@ -1,0 +1,8 @@
+{
+ "remove": [
+  "/product-images/bfbe5b573a632e56.webp"
+ ],
+ "replace": {
+  "/product-images/ea83d53bfa79a12a.webp": "/product-images/d82b36dcf5cbc785.webp"
+ }
+}
