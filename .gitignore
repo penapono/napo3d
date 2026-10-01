@@ -3,3 +3,4 @@
 __pycache__/
 *.pyc
 makerworld_scraper/output/
+.venv/
