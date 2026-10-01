@@ -6,7 +6,7 @@ import {
   unitPriceFromWeight,
   weightInGrams,
 } from '../shared/contract.js';
-import { primaryProductOption, productCategories } from '../shared/catalog.js';
+import { primaryProductOption, productCategories, siteAssetPath } from '../shared/catalog.js';
 import { apiClient } from './api-client.js';
 
 const copy = {
@@ -24,7 +24,7 @@ const copy = {
   'Brinde inteligente / NFC': 'Um brinde memorável que aproxima sua marca das pessoas.',
 };
 
-const localImages = { 'Porta-copos': './assets/images/porta-copos.png' };
+const localImages = { 'Porta-copos': '/assets/images/porta-copos.png' };
 
 const state = {
   items: [],
@@ -407,15 +407,19 @@ function productImage(item, option) {
   const candidate = option.imageUrl || galleryPrimary;
   const candidateIsLocal = candidate && candidate.startsWith('assets/images/');
   return {
-    primary: local || candidate,
-    fallback: local ? candidate : candidateIsLocal ? option.imageUrl || '' : '',
+    primary: siteAssetPath(local || candidate),
+    fallback: siteAssetPath(local ? candidate : candidateIsLocal ? option.imageUrl || '' : ''),
   };
 }
 
 function productGalleryImages(item, option) {
   const source = productImage(item, option);
   return [
-    ...new Set([source.primary, ...(option.imageGallery || []), source.fallback].filter(Boolean)),
+    ...new Set(
+      [source.primary, ...(option.imageGallery || []).map(siteAssetPath), source.fallback].filter(
+        Boolean
+      )
+    ),
   ];
 }
 
@@ -481,7 +485,9 @@ function setSelectedOption(item, optionName) {
   return option;
 }
 
-function image(url, alt, fallbackUrl = '') {
+function image(rawUrl, alt, rawFallbackUrl = '') {
+  const url = siteAssetPath(rawUrl);
+  const fallbackUrl = siteAssetPath(rawFallbackUrl);
   if (!url) return '<div class="image-fallback">Imagem<br>indisponível</div>';
   const fallback =
     fallbackUrl && fallbackUrl !== url

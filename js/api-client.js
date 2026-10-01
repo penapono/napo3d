@@ -53,7 +53,7 @@ async function request(pathname, options = {}) {
 }
 
 async function loadCatalog() {
-  const response = await fetch('./data/models.json');
+  const response = await fetch('/data/models.json');
   if (!response.ok) throw new Error(`Falha ao carregar catálogo local (${response.status})`);
   return response.json();
 }

@@ -90,6 +90,13 @@ export function productCategories(product = {}) {
   return names;
 }
 
+// Stored image paths such as `assets/images/x.webp` are relative to the site root. Make
+// them root-relative so they also resolve on nested routes like /produtos/<id>.
+export function siteAssetPath(url) {
+  const value = String(url ?? '').trim();
+  return /^(?:\.\/)?(?:assets|data)\//.test(value) ? `/${value.replace(/^\.\//, '')}` : value;
+}
+
 export function productHasCategory(product = {}, category = '') {
   const wanted = String(category || '')
     .trim()
