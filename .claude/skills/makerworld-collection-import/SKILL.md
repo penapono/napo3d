@@ -1,11 +1,14 @@
 ---
 name: makerworld-collection-import
-description: Use when the user gives a MakerWorld collection URL (makerworld.com/<locale>/collections/<id>-<slug>) and wants to find the models that are not on napo3d.shop yet and add them as products (translated to Brazilian Portuguese, with self-hosted photos and categories).
+description: Use when the user wants to add new MakerWorld models to napo3d.shop from a collection (makerworld.com/<locale>/collections/<id>-<slug>), or says to sync/import the napo3d collection. Works with no URL (uses the default napo3d collection). Finds models not yet on the site and adds them translated to Brazilian Portuguese, with self-hosted photos and categories.
 ---
 
 # MakerWorld collection → napo3d products
 
-Input: a MakerWorld collection URL. Output: new products live on https://napo3d.shop with
+Input: a MakerWorld collection URL (optional). **Default collection** when the user gives no
+URL: `https://makerworld.com/pt/collections/33800388-napo3d` (the napo3d collection, 209 models
+on 2026-09-30). If the user passes a different URL, use that one instead; say which collection
+you are using at the start. Output: new products live on https://napo3d.shop with
 Portuguese names/descriptions, categories, and self-hosted WebP photos.
 
 Repo root: `/Users/pnaponoceno/projects/penapono/napo3d`. Prefix shell commands with `rtk`
