@@ -11,8 +11,11 @@ on 2026-09-30). If the user passes a different URL, use that one instead; say wh
 you are using at the start. Output: new products live on https://napo3d.shop with
 Portuguese names/descriptions, categories, and self-hosted WebP photos.
 
-Repo root: `/Users/pnaponoceno/projects/penapono/napo3d`. Prefix shell commands with `rtk`
-(project rule). Production: `ubuntu@napo3d.shop`, app dir `/srv/napo3d/current`, compose
+Repo root: `/Users/pnaponoceno/projects/penapono/napo3d`. This skill is installed globally, so
+the session may start in ANY directory: before step 1, `cd` to the repo root (and use absolute
+paths when a command cannot `cd`); all `scripts/`, `makerworld_scraper/` and `product-images/`
+paths below are relative to it. Read the project's `AGENTS.md` there once. Prefix shell
+commands with `rtk` (project rule). Production: `ubuntu@napo3d.shop`, app dir `/srv/napo3d/current`, compose
 command `docker compose --env-file .env.production -f compose.production.yml`.
 
 ## Why a browser is involved
