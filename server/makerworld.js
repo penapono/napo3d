@@ -155,6 +155,29 @@ export function mergeMakerWorldProductData(product, refreshes) {
   };
 }
 
+// Applies reviewed Brazilian Portuguese content (payload.pt) on top of a merged product:
+// { name, summary, description, categories: [primary, ...] }. Empty fields are ignored.
+export function applyPortugueseContent(product = {}, pt = {}) {
+  const name = firstText(pt?.name);
+  const categories = (Array.isArray(pt?.categories) ? pt.categories : [])
+    .map((entry) => firstText(entry))
+    .filter(Boolean);
+  const next = { ...product };
+  if (name) {
+    next.name = name;
+    next.options = (product.options || []).map((option, index) =>
+      index === 0 ? { ...option, name } : option
+    );
+  }
+  if (firstText(pt?.summary)) next.summary = firstText(pt.summary);
+  if (firstText(pt?.description)) next.description = firstText(pt.description);
+  if (categories.length) {
+    next.category = categories[0];
+    next.categories = categories;
+  }
+  return next;
+}
+
 function toPortugueseMakerWorldUrl(url) {
   const normalized = new URL(url.toString());
   const segments = normalized.pathname.split('/').filter(Boolean);

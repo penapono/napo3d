@@ -97,3 +97,26 @@ test('a first import still takes the remote MakerWorld images', () => {
     '/product-images/cccc.webp',
   ]);
 });
+
+test('applyPortugueseContent overrides name, summary, description and categories', async () => {
+  const { applyPortugueseContent } = await import('../server/makerworld.js');
+  const merged = {
+    name: 'Cute Angel',
+    summary: '',
+    options: [{ name: 'Cute Angel', url: 'https://makerworld.com/pt/models/1-x', weight: 10 }],
+  };
+  const result = applyPortugueseContent(merged, {
+    name: 'Anjinho Fofo',
+    summary: 'Um anjinho para decorar.',
+    description: 'Descrição longa.',
+    categories: ['Religioso', 'Natal', ' '],
+  });
+  assert.equal(result.name, 'Anjinho Fofo');
+  assert.equal(result.options[0].name, 'Anjinho Fofo');
+  assert.equal(result.options[0].weight, 10);
+  assert.equal(result.summary, 'Um anjinho para decorar.');
+  assert.equal(result.description, 'Descrição longa.');
+  assert.equal(result.category, 'Religioso');
+  assert.deepEqual(result.categories, ['Religioso', 'Natal']);
+  assert.deepEqual(applyPortugueseContent(merged, undefined), merged);
+});

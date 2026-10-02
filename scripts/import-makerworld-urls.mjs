@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 
 import { validateProductInput } from '../shared/contract.js';
 import {
+  applyPortugueseContent,
   mergeMakerWorldProductData,
   normalizeMakerWorldUrl,
   scrapeMakerWorldModel,
@@ -84,9 +85,10 @@ async function importProduct(store, url, payloads) {
     ? payloads.get(makerWorldModelIdFromUrl(url))
     : await scrapeMakerWorldModel(url, { scraperUrl: process.env.MAKERWORLD_SCRAPER_URL });
   if (!payload) throw new Error(`Sem payload para ${url} em --payloads-file.`);
-  const merged = mergeMakerWorldProductData(buildDraftProduct(url), [
-    { target: { index: 0, url }, payload },
-  ]);
+  const merged = applyPortugueseContent(
+    mergeMakerWorldProductData(buildDraftProduct(url), [{ target: { index: 0, url }, payload }]),
+    payload.pt
+  );
   const validation = validateProductInput(merged);
   if (!validation.ok) {
     throw new Error(
